@@ -13,6 +13,7 @@ import { FaceTecSDK as FaceTecSDKType } from 'src/assets/core-sdk/FaceTecSDK.js/
 import { SendDigitalCnhComponent } from './send-digital-cnh/send-digital-cnh.component';
 import { IproovComponent } from './iproov/iproov.component';
 import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
+import { JornadaInitComponent } from './jornada-init/jornada-init.component';
 
 @NgModule({
   declarations: [
@@ -25,7 +26,8 @@ import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
     SendDigitalCnhComponent,
     SenddocumentComponent,
     IproovComponent,
-    FacetecV10Component
+    FacetecV10Component,
+    JornadaInitComponent
   ],
   imports: [
     BrowserModule,
