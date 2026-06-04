@@ -1,0 +1,54 @@
+<div class="row">
+  <div class="col-12 mt-4">
+    <a [routerLink]="['/home']">Voltar</a>
+  </div>
+  <div class="col-12 my-4">
+    <div class="wrapping-box-container">
+      <div id="controls" class="controls">
+
+        <div class="col-12 my-4">
+
+          <button type="button" class="btn btn-primary btn-rounded" 
+          *ngIf="!showButton" (click)= "startIproovValidation()" [disabled] = "isLoading"
+           aria-label="Iniciar a validação facial 3D com a câmera">
+              Iniciar Validação Iproov
+              </button>
+              
+              <div *ngIf="status" class="error-message" aria-live="assertive">
+                <br>
+                {{ status }}
+              </div>
+
+              <div *ngIf="statusRequest" aria-live="polite">
+                <br>
+                <h3>{{ statusRequest }}</h3>
+              </div>
+              <br>
+
+              <div class="grid gap-5 w-full px-10">
+                <ul *ngIf="userFeedback && userFeedback.length > 0" class="pull-left list-disc pl-5">
+                  <li *ngFor="let guidance of userFeedback">
+                    <h5 class="text-left">{{ guidance }}</h5>
+                  </li>
+                </ul>
+              </div>
+              
+              <div id = "certiface-iproov"></div>
+         </div>
+        <hr />
+        <div id="custom-logo-container">
+          <img [src]="iProovLogo" alt="Logotipo da solução de validação facial da Iproov" />
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 text-center">
+    <button type="button" id="delete-appkey" variant="link" class="btn btn-link" (click)="deleteAppKey()"
+    aria-label="Clique aqui se estiver com problemas. Isso removerá sua AppKey.">
+      Em caso de problemas, clique aqui
+    </button>
+  </div>
+</div>
+
+
+
