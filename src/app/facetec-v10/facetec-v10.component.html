@@ -1,13 +1,21 @@
 <div class="row">
   <div class="col-12 mt-4">
-    <a [routerLink]="['/home']">Voltar</a>
+    <a [routerLink]="['/']">Voltar</a>
   </div>
   <div class="col-12 my-4">
     <div class="wrapping-box-container">
       <div id="controls" class="controls">
+        <div class="awface-session-heading" *ngIf="activeSession">
+          <p>Prova de vida</p>
+          <h1>{{ activeSession.subject.fullName }}</h1>
+          <span>{{ awfaceService.getJourneyLabel(activeSession.journeyType) }}</span>
+        </div>
+        <p class="awface-helper">
+          Quando estiver tudo pronto, toque no botão abaixo. O sistema vai pedir acesso à câmera e orientar cada movimento.
+        </p>
         <button type="button" id="liveness-button" class="btn btn-primary btn-rounded" disabled
           (click)="showLiveness3D()">
-          3D Liveness Check
+          Iniciar prova de vida
         </button>
         <p id="status" class="mt-2">
           {{status}}
@@ -21,7 +29,7 @@
   </div>
   <div class="col-12 text-center">
     <button type="button" id="delete-appkey" variant="link" class="btn btn-link" (click)="deleteAppKey()">
-      Em caso de problemas, clique aqui
+      Recomeçar
     </button>
   </div>
 </div>

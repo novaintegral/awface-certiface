@@ -1,0 +1,24 @@
+<main class="admin-shell">
+  <section class="login-panel">
+    <a routerLink="/" class="back-link">Voltar para jornada</a>
+    <p class="eyebrow">AWFace Master</p>
+    <h1>Acesso administrativo</h1>
+    <p>Entre para configurar tenants, credenciais, callback e identidade visual.</p>
+
+    <form (ngSubmit)="login()" class="admin-form">
+      <label>
+        Email
+        <input name="email" type="email" [(ngModel)]="email" autocomplete="username" />
+      </label>
+
+      <label>
+        Senha
+        <input name="password" type="password" [(ngModel)]="password" autocomplete="current-password" />
+      </label>
+
+      <p class="error-message" *ngIf="error">{{ error }}</p>
+
+      <button type="submit">Entrar</button>
+    </form>
+  </section>
+</main>

@@ -1,0 +1,106 @@
+<main class="journey-shell">
+  <section class="journey-panel" *ngIf="step === 'identify'">
+    <div class="brand-row">
+      <img src="/assets/img/logo_certiface_trans.png" alt="AWFace" />
+      <a routerLink="/admin" class="admin-link">Admin</a>
+    </div>
+
+    <div class="intro">
+      <p class="eyebrow">Prova de vida segura</p>
+      <h1>Vamos confirmar sua identidade em poucos passos.</h1>
+      <p>
+        Tenha um documento por perto, procure um lugar iluminado e siga as orientações na tela.
+        O processo é rápido e protege você contra fraudes.
+      </p>
+    </div>
+
+    <form class="journey-form" (ngSubmit)="startJourney()">
+      <label>
+        Token de integração
+        <input name="integrationToken" [(ngModel)]="form.integrationToken" autocomplete="off" />
+        <span *ngIf="errors['integrationToken']">{{ errors['integrationToken'] }}</span>
+      </label>
+
+      <label>
+        Tipo de jornada
+        <select name="journeyType" [(ngModel)]="form.journeyType">
+          <option *ngFor="let item of journeyTypes" [ngValue]="item.value">{{ item.label }}</option>
+        </select>
+        <span *ngIf="errors['journeyType']">{{ errors['journeyType'] }}</span>
+      </label>
+
+      <label>
+        CPF
+        <input name="cpf" [(ngModel)]="form.cpf" inputmode="numeric" autocomplete="off" />
+        <span *ngIf="errors['cpf']">{{ errors['cpf'] }}</span>
+      </label>
+
+      <label>
+        Nome completo
+        <input name="fullName" [(ngModel)]="form.fullName" autocomplete="name" />
+        <span *ngIf="errors['fullName']">{{ errors['fullName'] }}</span>
+      </label>
+
+      <label>
+        Data de nascimento
+        <input name="birthDate" [(ngModel)]="form.birthDate" type="date" />
+        <span *ngIf="errors['birthDate']">{{ errors['birthDate'] }}</span>
+      </label>
+
+      <label>
+        Referência do cliente
+        <input name="externalClientId" [(ngModel)]="form.externalClientId" autocomplete="off" />
+        <span *ngIf="errors['externalClientId']">{{ errors['externalClientId'] }}</span>
+      </label>
+
+      <p class="error-message" *ngIf="generalError">{{ generalError }}</p>
+
+      <button type="submit">Continuar</button>
+    </form>
+  </section>
+
+  <section class="journey-panel consent-panel" *ngIf="step === 'consent' && session">
+    <div class="tenant-card">
+      <img [src]="getTenantLogo()" [alt]="session.tenant.name" />
+      <div>
+        <strong>{{ session.tenant.name }}</strong>
+        <span>{{ awfaceService.getJourneyLabel(session.journeyType) }}</span>
+      </div>
+    </div>
+
+    <div class="consent-icon" aria-hidden="true">✓</div>
+    <p class="eyebrow">Autorização</p>
+    <h1>Você autoriza o uso da sua biometria facial?</h1>
+    <p>
+      Olá, gostaríamos de utilizar seus dados de biometria facial para evitar que pessoas
+      mal-intencionadas acessem sua conta e, quando necessário, também para facilitar a sua identificação.
+      Para que isso aconteça, precisamos da sua permissão.
+    </p>
+    <p>
+      Você pode consultar os documentos do serviço antes de continuar:
+      <a [href]="session.tenant.termsUrl" target="_blank" rel="noopener">Termos de uso</a>
+      e
+      <a [href]="session.tenant.privacyUrl" target="_blank" rel="noopener">Política de privacidade</a>.
+    </p>
+
+    <p class="error-message" *ngIf="generalError">{{ generalError }}</p>
+
+    <div class="consent-actions">
+      <button type="button" class="primary-action" (click)="acceptConsent()">Autorizo e quero continuar</button>
+      <button type="button" class="secondary-action" (click)="refuseConsent()">Não autorizo</button>
+    </div>
+  </section>
+
+  <section class="journey-panel status-panel" *ngIf="step === 'loading'">
+    <div class="loader"></div>
+    <h1>{{ loadingMessage }}</h1>
+    <p>Aguarde um instante. Estamos preparando tudo para você.</p>
+  </section>
+
+  <section class="journey-panel status-panel" *ngIf="step === 'refused'">
+    <div class="refused-icon" aria-hidden="true">!</div>
+    <h1>Autorização não concedida</h1>
+    <p>Sem a autorização, não podemos iniciar a prova de vida. Sua escolha foi registrada.</p>
+    <button type="button" (click)="step = 'consent'">Rever autorização</button>
+  </section>
+</main>

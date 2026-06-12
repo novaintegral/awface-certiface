@@ -8,6 +8,8 @@ import { SampleAppUtilities } from '../../assets/facetec-v10/utilities/SampleApp
 import { ThemeHelpers } from 'src/assets/facetec-v10/utilities/ThemeHelpers';
 import { DeveloperStatusMessages } from '../../assets/facetec-v10/utilities/DeveloperStatusMessages';
 import { Facetecv10UiService } from './facetec-v10-ui.service';
+import { AwfaceService } from '../awface/awface.service';
+import { AwfaceJourneySession } from '../awface/models';
 
 @Component({
   selector: 'app-facetec-v10',
@@ -19,6 +21,7 @@ export class FacetecV10Component implements OnInit {
   status: string = "";
   appkey: any;
   facetecStrings: any;
+  activeSession: AwfaceJourneySession | null = null;
 
   private faceTecSDKInstance!: FaceTecSDKInstance;
   private themeHelpers!: ThemeHelpers;
@@ -26,12 +29,19 @@ export class FacetecV10Component implements OnInit {
 
   constructor(
     private router: Router,
-    private facetecv10UiService: Facetecv10UiService
+    private facetecv10UiService: Facetecv10UiService,
+    public awfaceService: AwfaceService
   ) { }
 
   async ngOnInit() {
     this.appkey = window.localStorage.getItem('appkey');
-    DeveloperStatusMessages.displayMessage("Inicializando...")
+    this.activeSession = this.awfaceService.getActiveSession();
+
+    if (this.activeSession?.tenant.logoBase64) {
+      this.FacetecLogo = this.activeSession.tenant.logoBase64;
+    }
+
+    DeveloperStatusMessages.displayMessage("Preparando a câmera...")
 
     await this.facetecv10UiService.formatUIForDevice();
 

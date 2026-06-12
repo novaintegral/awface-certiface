@@ -1,0 +1,118 @@
+<main class="admin-shell admin-workspace">
+  <header class="admin-header">
+    <div>
+      <p class="eyebrow">AWFace Master</p>
+      <h1>Tenants e whitelabel</h1>
+    </div>
+    <div class="header-actions">
+      <a routerLink="/">Jornada</a>
+      <button type="button" class="ghost-button" (click)="logout()">Sair</button>
+    </div>
+  </header>
+
+  <section class="tenant-layout">
+    <aside class="tenant-list">
+      <button type="button" class="new-button" (click)="newTenant()">Novo tenant</button>
+      <button
+        type="button"
+        class="tenant-item"
+        *ngFor="let tenant of tenants"
+        [class.selected]="tenant.id === selectedTenant.id"
+        (click)="selectTenant(tenant)"
+      >
+        <strong>{{ tenant.name }}</strong>
+        <span>{{ statusLabel(tenant.status) }}</span>
+        <small>{{ tenant.integrationToken }}</small>
+      </button>
+    </aside>
+
+    <form class="tenant-editor" (ngSubmit)="saveTenant()">
+      <div class="editor-title">
+        <div>
+          <h2>{{ selectedTenant.id ? 'Editar tenant' : 'Novo tenant' }}</h2>
+          <p>Configure a identidade visual, callbacks e credenciais Certiface por tipo de jornada.</p>
+        </div>
+        <span class="status-pill">{{ statusLabel(selectedTenant.status) }}</span>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          Nome do tenant
+          <input name="name" [(ngModel)]="selectedTenant.name" required />
+        </label>
+
+        <label>
+          Token de integração
+          <input name="integrationToken" [(ngModel)]="selectedTenant.integrationToken" placeholder="Gerado ao salvar se vazio" />
+        </label>
+
+        <label>
+          Termos de uso
+          <input name="termsUrl" [(ngModel)]="selectedTenant.termsUrl" type="url" />
+        </label>
+
+        <label>
+          Política de privacidade
+          <input name="privacyUrl" [(ngModel)]="selectedTenant.privacyUrl" type="url" />
+        </label>
+
+        <label>
+          UrlCallback
+          <input name="callbackUrl" [(ngModel)]="selectedTenant.callbackUrl" type="url" />
+        </label>
+
+        <label>
+          SecureCallback
+          <input name="secureCallbackToken" [(ngModel)]="selectedTenant.secureCallbackToken" autocomplete="off" />
+        </label>
+
+        <label class="full-line">
+          Base64 do logotipo
+          <textarea name="logoBase64" [(ngModel)]="selectedTenant.logoBase64" rows="3"></textarea>
+        </label>
+      </div>
+
+      <section class="credentials-section">
+        <h3>Jornadas habilitadas</h3>
+        <div class="credential-card" *ngFor="let journey of journeyTypes">
+          <label class="check-row">
+            <input
+              type="checkbox"
+              [checked]="hasCredential(journey.value)"
+              (change)="toggleCredential(journey.value, $any($event.target).checked)"
+            />
+            {{ journey.label }}
+          </label>
+
+          <div class="credential-fields" *ngIf="hasCredential(journey.value)">
+            <label>
+              Usuário Certiface
+              <input
+                [name]="'providerUser' + journey.value"
+                [(ngModel)]="getCredential(journey.value).providerUser"
+                autocomplete="off"
+              />
+            </label>
+            <label>
+              Senha Certiface
+              <input
+                [name]="'providerPass' + journey.value"
+                [(ngModel)]="getCredential(journey.value).providerPass"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <p class="success-message" *ngIf="message">{{ message }}</p>
+
+      <div class="editor-actions">
+        <button type="submit">Salvar tenant</button>
+        <button type="button" class="ghost-button" (click)="setStatus('ACTIVE')" [disabled]="!selectedTenant.id">Ativar</button>
+        <button type="button" class="ghost-button" (click)="setStatus('BLOCKED')" [disabled]="!selectedTenant.id">Bloquear</button>
+        <button type="button" class="danger-button" (click)="setStatus('CANCELLED')" [disabled]="!selectedTenant.id">Cancelar</button>
+      </div>
+    </form>
+  </section>
+</main>

@@ -5,6 +5,11 @@
 export const environment = {
   production: false,
   apiUrl: 'https://hml.certiface.com.br',
+  awfaceApiUrl: '',
+  awfaceAdminUser: {
+    email: 'admin@awface.local',
+    password: 'Awface@123',
+  },
 
   DeviceKeyIdentifier: 'dF2CabwQ6OCLFJaV2QqZhP7OUErHv0uz',
   PublicFaceScanEncryptionKey:

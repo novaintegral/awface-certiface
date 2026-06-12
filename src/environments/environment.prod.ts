@@ -1,6 +1,11 @@
 export const environment = {
   production: true,
   apiUrl: 'https://hml.certiface.com.br',
+  awfaceApiUrl: '',
+  awfaceAdminUser: {
+    email: 'admin@awface.local',
+    password: 'Awface@123',
+  },
   login: 'safra.epf.hml',
   pass: 'certiface2020',
   DeviceKeyIdentifier: 'dF2CabwQ6OCLFJaV2QqZhP7OUErHv0uz',

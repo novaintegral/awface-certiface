@@ -1,6 +1,7 @@
 import { BrowserModule } from '@angular/platform-browser';
 import { NgModule } from '@angular/core';
 import { HttpClientModule } from '@angular/common/http';
+import { FormsModule } from '@angular/forms';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
@@ -13,6 +14,9 @@ import { FaceTecSDK as FaceTecSDKType } from 'src/assets/core-sdk/FaceTecSDK.js/
 import { SendDigitalCnhComponent } from './send-digital-cnh/send-digital-cnh.component';
 import { IproovComponent } from './iproov/iproov.component';
 import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
+import { JourneyComponent } from './journey/journey.component';
+import { AdminLoginComponent } from './admin/admin-login.component';
+import { AdminTenantsComponent } from './admin/admin-tenants.component';
 
 @NgModule({
   declarations: [
@@ -25,12 +29,16 @@ import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
     SendDigitalCnhComponent,
     SenddocumentComponent,
     IproovComponent,
-    FacetecV10Component
+    FacetecV10Component,
+    JourneyComponent,
+    AdminLoginComponent,
+    AdminTenantsComponent
   ],
   imports: [
     BrowserModule,
     AppRoutingModule,
-    HttpClientModule
+    HttpClientModule,
+    FormsModule
   ],
   providers: [],
   bootstrap: [AppComponent]

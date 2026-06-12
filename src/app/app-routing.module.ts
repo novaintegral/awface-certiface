@@ -8,11 +8,26 @@ import { SenddocumentComponent } from './senddocument/senddocument.component';
 import { SendDigitalCnhComponent } from './send-digital-cnh/send-digital-cnh.component';
 import { IproovComponent } from './iproov/iproov.component';
 import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
+import { JourneyComponent } from './journey/journey.component';
+import { AdminLoginComponent } from './admin/admin-login.component';
+import { AdminTenantsComponent } from './admin/admin-tenants.component';
 
 const routes: Routes = [
   {
     path: '',
+    component: JourneyComponent,
+  },
+  {
+    path: 'appkey',
     component: AppkeyComponent,
+  },
+  {
+    path: 'admin',
+    component: AdminLoginComponent,
+  },
+  {
+    path: 'admin/tenants',
+    component: AdminTenantsComponent,
   },
   {
     path: 'home',
