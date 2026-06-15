@@ -1,0 +1,25 @@
+namespace AWFace.Api.Configuration;
+
+public sealed class AwfaceOptions
+{
+    public string Schema { get; set; } = "public";
+    public AdminOptions Admin { get; set; } = new();
+    public CorsOptions Cors { get; set; } = new();
+}
+
+public sealed class AdminOptions
+{
+    public string Email { get; set; } = "admin@awface.local";
+    public string Password { get; set; } = "Awface@123";
+}
+
+public sealed class CorsOptions
+{
+    public string[] AllowedOrigins { get; set; } = [];
+}
+
+public sealed class CertifaceOptions
+{
+    public string BaseUrl { get; set; } = "https://hml.certiface.com.br";
+    public string ResultBaseUrl { get; set; } = "https://hml.certiface.com.br:8443";
+}

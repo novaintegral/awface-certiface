@@ -1,11 +1,12 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { Observable, catchError, map, of, switchMap, tap, throwError } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { Observable, catchError, map, of, tap, throwError } from 'rxjs';
 import { environment } from 'src/environments/environment';
 import {
   AWFACE_JOURNEY_LABELS,
   AwfaceAdminCredentials,
   AwfaceConsentDecision,
+  AwfaceCompletionResult,
   AwfaceJourneySession,
   AwfaceJourneyStartRequest,
   AwfaceJourneyType,
@@ -17,11 +18,11 @@ const TENANTS_KEY = 'awface.tenants';
 const SESSIONS_KEY = 'awface.sessions';
 const ADMIN_SESSION_KEY = 'awface.admin.session';
 const ACTIVE_SESSION_KEY = 'awface.activeJourneySessionId';
+const COMPLETION_KEY = 'awface.completion';
 
 @Injectable({ providedIn: 'root' })
 export class AwfaceService {
   private readonly apiBaseUrl = environment.awfaceApiUrl || '';
-  private readonly certifaceBaseUrl = environment.apiUrl;
   private readonly adminUser = environment.awfaceAdminUser;
 
   constructor(private http: HttpClient) {
@@ -37,6 +38,18 @@ export class AwfaceService {
     }
 
     return authenticated;
+  }
+
+  loginAdminRemote(credentials: AwfaceAdminCredentials): Observable<boolean> {
+    return this.http.post<{ authenticated: boolean }>(`${this.apiBaseUrl}/api/awface/admin/login`, credentials).pipe(
+      map(response => response.authenticated),
+      tap(authenticated => {
+        if (authenticated) {
+          localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ email: credentials.email, loggedAt: new Date().toISOString() }));
+        }
+      }),
+      catchError(() => of(this.loginAdmin(credentials)))
+    );
   }
 
   logoutAdmin(): void {
@@ -103,6 +116,9 @@ export class AwfaceService {
       fullName: request.fullName.trim().replace(/\s+/g, ' '),
       externalClientId: request.externalClientId.trim(),
     };
+
+    localStorage.removeItem('appkey');
+    localStorage.removeItem('awface.completion');
 
     return this.http.post<AwfaceJourneySession>(`${this.apiBaseUrl}/api/awface/journeys`, sanitizedRequest).pipe(
       tap(session => this.persistActiveSession(session)),
@@ -185,62 +201,43 @@ export class AwfaceService {
     return this.http.post<{ appkey: string }>(endpoint, {}).pipe(
       map(response => response.appkey),
       tap(appkey => this.markSessionAppkey(session.id, appkey)),
-      catchError(() => this.issueAppkeyDirectly(session))
+      catchError(error => throwError(() => error))
     );
+  }
+
+  getCompletionStatus(sessionId: string): Observable<AwfaceCompletionResult> {
+    return this.http.get<AwfaceCompletionResult>(`${this.apiBaseUrl}/api/awface/journeys/${sessionId}/completion`);
+  }
+
+  saveCompletionResult(result: AwfaceCompletionResult): void {
+    localStorage.setItem(COMPLETION_KEY, JSON.stringify(result));
+  }
+
+  getCompletionResult(): AwfaceCompletionResult | null {
+    const value = localStorage.getItem(COMPLETION_KEY);
+    return value ? JSON.parse(value) : null;
   }
 
   getJourneyLabel(journeyType: AwfaceJourneyType): string {
     return AWFACE_JOURNEY_LABELS[journeyType];
   }
 
-  private issueAppkeyDirectly(session: AwfaceJourneySession): Observable<string> {
-    const credential = session.tenant.credentials.find(item => item.journeyType === session.journeyType);
-
-    if (!credential) {
-      return throwError(() => new Error('Credencial Certiface não configurada para esta jornada.'));
+  getLogoSource(value?: string | null, fallback = '/assets/img/logo_certiface_trans.png'): string {
+    const logo = value?.trim();
+    if (!logo) {
+      return fallback;
     }
 
-    const credentialBody = new HttpParams()
-      .set('user', credential.providerUser)
-      .set('pass', credential.providerPass);
+    if (/^(data:image\/|https?:\/\/|\/assets\/)/i.test(logo)) {
+      return logo;
+    }
 
-    const headers = new HttpHeaders({ 'Content-Type': 'application/x-www-form-urlencoded' });
-
-    return this.http
-      .post<{ token: string; expires: string }>(
-        `${this.certifaceBaseUrl}/facecaptcha/service/captcha/credencial`,
-        credentialBody.toString(),
-        { headers }
-      )
-      .pipe(
-        map(token => ({ token, credential })),
-        map(({ token, credential }) => {
-          return new HttpParams()
-            .set('user', credential.providerUser)
-            .set('token', JSON.stringify(token))
-            .set('cpf', session.subject.cpf)
-            .set('nome', session.subject.fullName)
-            .set('nascimento', this.toBrazilianDate(session.subject.birthDate))
-            .set('idExternoCliente', session.subject.externalClientId);
-        }),
-        switchMap(body => this.postAppkey(session.id, body, headers))
-      );
-  }
-
-  private postAppkey(sessionId: string, body: HttpParams, headers: HttpHeaders): Observable<string> {
-    return this.http
-      .post<{ appkey: string }>(
-        `${this.certifaceBaseUrl}/facecaptcha/service/captcha/appkey`,
-        body.toString(),
-        { headers }
-      )
-      .pipe(
-        map(response => response.appkey),
-        tap(appkey => this.markSessionAppkey(sessionId, appkey))
-      );
+    return `data:image/png;base64,${logo.replace(/\s/g, '')}`;
   }
 
   private markSessionAppkey(sessionId: string, appkey: string): void {
+    localStorage.setItem('appkey', appkey);
+
     const session = this.getLocalSessions().find(item => item.id === sessionId);
     if (!session) {
       return;
@@ -252,10 +249,10 @@ export class AwfaceService {
       status: 'APPKEY_CREATED',
       updatedAt: new Date().toISOString(),
     });
-    localStorage.setItem('appkey', appkey);
   }
 
   private persistActiveSession(session: AwfaceJourneySession): void {
+    this.saveLocalSession(session);
     localStorage.setItem(ACTIVE_SESSION_KEY, session.id);
   }
 
@@ -317,8 +314,4 @@ export class AwfaceService {
     ]);
   }
 
-  private toBrazilianDate(value: string): string {
-    const [year, month, day] = value.split('-');
-    return `${day}/${month}/${year}`;
-  }
 }

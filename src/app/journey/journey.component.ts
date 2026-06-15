@@ -119,19 +119,18 @@ export class JourneyComponent implements OnInit {
   }
 
   getTenantLogo(): string {
-    if (this.session?.tenant.logoBase64) {
-      return this.session.tenant.logoBase64;
-    }
-
-    return '/assets/img/logo_certiface_trans.png';
+    return this.awfaceService.getLogoSource(this.session?.tenant.logoBase64);
   }
 
   private issueAppkeyAndContinue(session: AwfaceJourneySession): void {
     this.awfaceService.issueAppkey(session).subscribe({
-      next: () => this.router.navigateByUrl('/facetec-v10'),
-      error: () => {
+      next: () => this.router.navigateByUrl('/journey'),
+      error: error => {
         this.step = 'consent';
-        this.generalError = 'Não foi possível iniciar a prova de vida agora. Verifique a credencial do tenant.';
+        const operation = error?.error?.providerOperation;
+        this.generalError = operation
+          ? `Não foi possível iniciar a prova de vida agora. Falha na etapa Certiface: ${operation}.`
+          : 'Não foi possível iniciar a prova de vida agora. Verifique a credencial do tenant.';
       },
     });
   }

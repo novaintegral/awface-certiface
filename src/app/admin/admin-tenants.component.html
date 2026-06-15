@@ -5,7 +5,7 @@
       <h1>Tenants e whitelabel</h1>
     </div>
     <div class="header-actions">
-      <a routerLink="/">Jornada</a>
+      <a routerLink="/journey-start">Jornada</a>
       <button type="button" class="ghost-button" (click)="logout()">Sair</button>
     </div>
   </header>
@@ -67,9 +67,19 @@
         </label>
 
         <label class="full-line">
-          Base64 do logotipo
+          Logotipo do tenant
+          <input name="logoFile" type="file" accept="image/*" (change)="onLogoFileSelected($event)" />
+        </label>
+
+        <label class="full-line">
+          Base64 ou data URL do logotipo
           <textarea name="logoBase64" [(ngModel)]="selectedTenant.logoBase64" rows="3"></textarea>
         </label>
+
+        <div class="logo-preview full-line" *ngIf="selectedTenant.logoBase64">
+          <span>Prévia do logotipo</span>
+          <img [src]="getLogoPreview()" [alt]="selectedTenant.name || 'Logotipo do tenant'" />
+        </div>
       </div>
 
       <section class="credentials-section">

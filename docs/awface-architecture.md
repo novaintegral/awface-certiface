@@ -15,17 +15,20 @@ The Angular app validates the input, resolves tenant customization through the A
 
 Sensitive data must be sent by the host through a backend-created short-lived launch token in production. Query parameters are supported in the current UI to keep local testing simple, but CPF, name and birth date should not remain in browser history in the final host integration.
 
-## Expected AWFace API
+## AWFace API (.NET 9)
+
+The backend lives in `backend/AWFace.Api` and runs on .NET 9. It centralizes calls to Postgres, Certiface and tenant callbacks so browser code no longer needs provider credentials or database access.
 
 - `POST /api/awface/journeys`
 - `POST /api/awface/journeys/{journeyId}/consent`
 - `POST /api/awface/journeys/{journeyId}/appkey`
+- `POST /api/awface/facetec/3d/process-request`
 - `GET /api/awface/admin/tenants`
 - `POST /api/awface/admin/tenants`
 - `PATCH /api/awface/admin/tenants/{tenantId}/status`
 - `POST /webhookliveness`
 
-The current Angular service uses these endpoints first and falls back to localStorage for local development when the backend is not available.
+The Angular service uses these endpoints first and still falls back to localStorage for local development when the backend is not available.
 
 ## Certiface flow
 
@@ -34,7 +37,7 @@ Based on the Certiface API Global documentation:
 1. Get provider credential token with `POST /facecaptcha/service/captcha/credencial`.
 2. Create an appkey with `POST /facecaptcha/service/captcha/appkey`.
 3. Start FaceTec V10 using the existing SDK assets.
-4. Process 3D SDK requests with `POST /facecaptcha/service/captcha/3d/process-request`.
+4. Process 3D SDK requests through AWFace with `POST /api/awface/facetec/3d/process-request`, which proxies Certiface `POST /facecaptcha/service/captcha/3d/process-request`.
 5. Receive provider completion webhook at AWFace.
 6. Query final result with `POST /facecaptcha/service/captcha/document/result`.
 7. Store the final result in Postgres.

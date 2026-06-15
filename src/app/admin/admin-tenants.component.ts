@@ -106,6 +106,32 @@ export class AdminTenantsComponent implements OnInit {
     return credential;
   }
 
+  onLogoFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      this.message = 'Selecione um arquivo de imagem para o logotipo.';
+      input.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.selectedTenant.logoBase64 = String(reader.result || '');
+      this.message = 'Logotipo carregado. Salve o tenant para persistir a alteração.';
+      input.value = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  getLogoPreview(): string {
+    return this.awfaceService.getLogoSource(this.selectedTenant.logoBase64);
+  }
+
   statusLabel(status: AwfaceTenantStatus): string {
     const labels: Record<AwfaceTenantStatus, string> = {
       ACTIVE: 'Ativo',

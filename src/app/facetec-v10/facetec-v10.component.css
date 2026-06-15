@@ -1,3 +1,23 @@
+.wrapping-box-container {
+  box-shadow: none;
+}
+
+#custom-logo-container {
+  margin: 0 auto 24px;
+  text-align: center;
+}
+
+#custom-logo-container img {
+  max-width: 180px;
+  max-height: 76px;
+  object-fit: contain;
+}
+
+hr {
+  margin: 22px auto 0;
+  border-color: #e7edf7;
+}
+
 .awface-session-heading {
   margin-bottom: 18px;
   text-align: center;
@@ -29,4 +49,22 @@
   margin: 0 auto 20px;
   text-align: center;
   line-height: 1.55;
+}
+
+:host ::ng-deep .awface-status-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  border: 2px solid #d9e6ff;
+  border-top-color: #2f78ff;
+  border-radius: 50%;
+  vertical-align: -4px;
+  animation: awface-spin 0.8s linear infinite;
+}
+
+@keyframes awface-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

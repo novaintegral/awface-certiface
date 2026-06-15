@@ -5,7 +5,7 @@
 export const environment = {
   production: false,
   apiUrl: 'https://hml.certiface.com.br',
-  awfaceApiUrl: '',
+  awfaceApiUrl: 'http://localhost:5000',
   awfaceAdminUser: {
     email: 'admin@awface.local',
     password: 'Awface@123',

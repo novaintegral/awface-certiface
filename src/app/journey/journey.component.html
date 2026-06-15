@@ -60,13 +60,7 @@
   </section>
 
   <section class="journey-panel consent-panel" *ngIf="step === 'consent' && session">
-    <div class="tenant-card">
-      <img [src]="getTenantLogo()" [alt]="session.tenant.name" />
-      <div>
-        <strong>{{ session.tenant.name }}</strong>
-        <span>{{ awfaceService.getJourneyLabel(session.journeyType) }}</span>
-      </div>
-    </div>
+    <img class="tenant-logo" [src]="getTenantLogo()" [alt]="session.tenant.name" />
 
     <div class="consent-icon" aria-hidden="true">✓</div>
     <p class="eyebrow">Autorização</p>
@@ -92,12 +86,14 @@
   </section>
 
   <section class="journey-panel status-panel" *ngIf="step === 'loading'">
+    <img class="tenant-logo" *ngIf="session" [src]="getTenantLogo()" [alt]="session.tenant.name" />
     <div class="loader"></div>
     <h1>{{ loadingMessage }}</h1>
     <p>Aguarde um instante. Estamos preparando tudo para você.</p>
   </section>
 
-  <section class="journey-panel status-panel" *ngIf="step === 'refused'">
+  <section class="journey-panel status-panel failed" *ngIf="step === 'refused'">
+    <img class="tenant-logo" *ngIf="session" [src]="getTenantLogo()" [alt]="session.tenant.name" />
     <div class="refused-icon" aria-hidden="true">!</div>
     <h1>Autorização não concedida</h1>
     <p>Sem a autorização, não podemos iniciar a prova de vida. Sua escolha foi registrada.</p>

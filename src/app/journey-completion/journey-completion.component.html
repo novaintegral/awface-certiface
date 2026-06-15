@@ -1,0 +1,32 @@
+<div class="completion-page">
+  <section class="completion-panel" [class.failed]="!success">
+    <img class="tenant-logo" [src]="getTenantLogo()" [alt]="session?.tenant?.name || 'CertiFace'" />
+
+    <div class="completion-icon" aria-hidden="true">
+      {{ success ? '✓' : '!' }}
+    </div>
+
+    <p class="completion-eyebrow">Prova de vida</p>
+    <h1>{{ success ? 'Estamos preparando tudo para iniciar a assinatura do documento' : 'Validação concluída com pendência' }}</h1>
+
+    <p class="completion-message">
+      {{ result?.message || 'A prova de vida foi processada.' }}
+    </p>
+    
+    <div class="completion-progress" *ngIf="success" aria-label="Preparando assinatura">
+      <div class="completion-progress-bar" [style.width.%]="closeProgress"></div>
+    </div>
+
+    <p class="completion-close-note" *ngIf="success && !closeBlocked">
+      Esta aba será fechada automaticamente.
+    </p>
+
+    <p class="completion-close-note warning" *ngIf="success && closeBlocked">
+      Seu navegador bloqueou o fechamento automático. Feche esta aba para continuar.
+    </p>
+
+    <p class="completion-next" *ngIf="!success">
+      Entre em contato com o administrador do sistema para continuar.
+    </p>    
+  </section>
+</div>

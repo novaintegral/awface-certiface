@@ -3,8 +3,12 @@
 # Compiled output
 /dist
 /tmp
+/.tmp
 /out-tsc
 /bazel-out
+**/bin/
+**/obj/
+backend/AWFace.Api/logs/
 
 # Node
 /node_modules

@@ -9,12 +9,18 @@ import { SendDigitalCnhComponent } from './send-digital-cnh/send-digital-cnh.com
 import { IproovComponent } from './iproov/iproov.component';
 import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
 import { JourneyComponent } from './journey/journey.component';
+import { JourneyCompletionComponent } from './journey-completion/journey-completion.component';
 import { AdminLoginComponent } from './admin/admin-login.component';
 import { AdminTenantsComponent } from './admin/admin-tenants.component';
 
 const routes: Routes = [
   {
     path: '',
+    redirectTo: 'journey-start',
+    pathMatch: 'full',
+  },
+  {
+    path: 'journey-start',
     component: JourneyComponent,
   },
   {
@@ -41,9 +47,13 @@ const routes: Routes = [
     path: 'liveness-3d',
     component: Liveness3dComponent,
   },
-    {
-    path: 'facetec-v10',
+  {
+    path: 'journey',
     component: FacetecV10Component,
+  },
+  {
+    path: 'journey-completion',
+    component: JourneyCompletionComponent,
   },
   {
     path: 'send-document',

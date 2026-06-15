@@ -60,6 +60,15 @@ export interface AwfaceAdminCredentials {
   password: string;
 }
 
+export type AwfaceCompletionStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
+
+export interface AwfaceCompletionResult {
+  status: AwfaceCompletionStatus;
+  message: string;
+  callbackStatus?: number;
+  deliveredAt?: string;
+}
+
 export const AWFACE_JOURNEY_LABELS: Record<AwfaceJourneyType, string> = {
   LIVENESS: 'Liveness',
   LIVENESS_FACE_BUREAU: 'Liveness + Bureau de faces',

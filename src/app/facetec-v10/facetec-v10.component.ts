@@ -1,5 +1,6 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
+import { Subscription, switchMap, timer } from 'rxjs';
 import { FaceTecSDK } from "../../assets/core-sdk-v10/core-sdk/FaceTecSDK.js/FaceTecSDK";
 import { Config } from "../../assets/facetec-v10/Config";
 import { FaceTecInitializationError, type FaceTecSDKInstance, FaceTecSessionResult } from '../../assets/core-sdk-v10/core-sdk/FaceTecSDK.js/FaceTecPublicApi';
@@ -9,15 +10,15 @@ import { ThemeHelpers } from 'src/assets/facetec-v10/utilities/ThemeHelpers';
 import { DeveloperStatusMessages } from '../../assets/facetec-v10/utilities/DeveloperStatusMessages';
 import { Facetecv10UiService } from './facetec-v10-ui.service';
 import { AwfaceService } from '../awface/awface.service';
-import { AwfaceJourneySession } from '../awface/models';
+import { AwfaceCompletionResult, AwfaceJourneySession } from '../awface/models';
 
 @Component({
   selector: 'app-facetec-v10',
   templateUrl: './facetec-v10.component.html',
   styleUrls: ['./facetec-v10.component.css']
 })
-export class FacetecV10Component implements OnInit {
-  FacetecLogo: string = '/assets/img/FaceTec_Logo.png';
+export class FacetecV10Component implements OnInit, OnDestroy {
+  FacetecLogo: string = '/assets/img/logo_certiface_trans.png';
   status: string = "";
   appkey: any;
   facetecStrings: any;
@@ -26,9 +27,14 @@ export class FacetecV10Component implements OnInit {
   private faceTecSDKInstance!: FaceTecSDKInstance;
   private themeHelpers!: ThemeHelpers;
   private sdkV10: any
+  private completionPolling?: Subscription;
+  private readonly sessionCompletedHandler = (): void => {
+    this.ngZone.run(() => this.startCompletionPolling());
+  };
 
   constructor(
     private router: Router,
+    private ngZone: NgZone,
     private facetecv10UiService: Facetecv10UiService,
     public awfaceService: AwfaceService
   ) { }
@@ -37,9 +43,9 @@ export class FacetecV10Component implements OnInit {
     this.appkey = window.localStorage.getItem('appkey');
     this.activeSession = this.awfaceService.getActiveSession();
 
-    if (this.activeSession?.tenant.logoBase64) {
-      this.FacetecLogo = this.activeSession.tenant.logoBase64;
-    }
+    this.FacetecLogo = this.awfaceService.getLogoSource(this.activeSession?.tenant.logoBase64);
+
+    window.addEventListener('awface:liveness-session-completed', this.sessionCompletedHandler);
 
     DeveloperStatusMessages.displayMessage("Preparando a câmera...")
 
@@ -54,6 +60,11 @@ export class FacetecV10Component implements OnInit {
     this.initializeFaceTecSDK();
   }
 
+  ngOnDestroy(): void {
+    window.removeEventListener('awface:liveness-session-completed', this.sessionCompletedHandler);
+    this.completionPolling?.unsubscribe();
+  }
+
   public showLiveness3D() {
     SampleAppUtilities.fadeOutMainUIAndPrepareForSession();
     this.faceTecSDKInstance.start3DLiveness(new SessionRequestProcessor());
@@ -62,8 +73,9 @@ export class FacetecV10Component implements OnInit {
   public deleteAppKey() {
     window.localStorage.removeItem('appkey');
     window.localStorage.removeItem('hasLiveness');
+    window.localStorage.removeItem('awface.completion');
 
-    this.router.navigateByUrl('/');
+    this.router.navigateByUrl('/journey-start');
   };
 
   private initializeFaceTecSDK = (): void => {
@@ -128,7 +140,8 @@ export class FacetecV10Component implements OnInit {
         DeveloperStatusMessages.displayMessage("Prova de Vida reprovada. Insira uma nova appkey e tente novamente");
         break;
       case FaceTecSDK.FaceTecSessionStatus.SessionCompleted:
-        DeveloperStatusMessages.displayMessage("Enviado com sucesso")
+        DeveloperStatusMessages.displayMessage('Prova de Vida em processo de validação... <span class="awface-status-spinner"></span>')
+        window.dispatchEvent(new CustomEvent('awface:liveness-session-completed'));
         break;
       case FaceTecSDK.FaceTecSessionStatus.UserCancelledFaceScan:
         DeveloperStatusMessages.displayMessage("Saiu da tela inteira sem concluir a prova de vida")
@@ -173,5 +186,51 @@ export class FacetecV10Component implements OnInit {
 
     this.themeHelpers = new ThemeHelpers(this.sdkV10);
     (window as any).FaceTecSDK = undefined;
+  }
+
+  private startCompletionPolling(): void {
+    if (!this.activeSession) {
+      this.saveAndNavigateToCompletion({
+        status: 'FAILED',
+        message: 'A prova de vida foi concluída, mas a jornada não foi encontrada para confirmar a comunicação final.',
+      });
+      return;
+    }
+
+    this.completionPolling?.unsubscribe();
+    let attempts = 0;
+
+    this.completionPolling = timer(0, 1000).pipe(
+      switchMap(() => this.awfaceService.getCompletionStatus(this.activeSession!.id))
+    ).subscribe({
+      next: result => {
+        attempts += 1;
+        if (result.status === 'PENDING' && attempts < 60) {
+          return;
+        }
+
+        if (result.status === 'PENDING') {
+          this.saveAndNavigateToCompletion({
+            status: 'FAILED',
+            message: 'A prova de vida foi concluída, mas a comunicação final demorou mais que o esperado. Entre em contato com o administrador do sistema.',
+          });
+          return;
+        }
+
+        this.saveAndNavigateToCompletion(result);
+      },
+      error: () => {
+        this.saveAndNavigateToCompletion({
+          status: 'FAILED',
+          message: 'A prova de vida foi concluída, mas não foi possível consultar a comunicação final. Entre em contato com o administrador do sistema.',
+        });
+      },
+    });
+  }
+
+  private saveAndNavigateToCompletion(result: AwfaceCompletionResult): void {
+    this.completionPolling?.unsubscribe();
+    this.awfaceService.saveCompletionResult(result);
+    this.router.navigateByUrl('/journey-completion');
   }
 }
