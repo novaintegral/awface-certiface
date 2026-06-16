@@ -1,0 +1,10 @@
+.git
+.angular
+.tmp
+dist
+node_modules
+backend/AWFace.Api/bin
+backend/AWFace.Api/obj
+backend/AWFace.Api/logs
+docker-data
+npm-debug.log

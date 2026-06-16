@@ -92,6 +92,12 @@ export class JourneyLaunchComponent implements OnInit {
     });
   }
 
+  backToConsent(): void {
+    this.status = 'consent';
+    this.title = 'Você autoriza o uso da sua biometria facial?';
+    this.message = 'Precisamos da sua permissão para iniciar a prova de vida.';
+  }
+
   getTenantLogo(): string {
     return this.awfaceService.getLogoSource(this.session?.tenant.logoBase64);
   }

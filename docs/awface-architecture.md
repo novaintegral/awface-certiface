@@ -26,6 +26,8 @@ The production-style host integration starts server-to-server:
 5. After explicit user consent, Angular registers the decision, creates the Certiface appkey through AWFace.Api and redirects to `/#/journey`.
 6. After successful liveness, AWFace calls the Tenant `UrlCallback` and the user is sent to `/#/journey-completion`.
 
+The `launchToken` can be reused while it is valid. AWFace only rejects invalid or expired launch tokens. The higher-priority expiration control is the liveness provider `appkey`: AWFace reuses an existing appkey only while it is inside `Awface:LivenessAppkeyLifetimeMinutes`; after that window, AWFace requests a fresh provider appkey.
+
 Request example:
 
 ```json

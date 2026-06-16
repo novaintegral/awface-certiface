@@ -4,6 +4,7 @@ public sealed class AwfaceOptions
 {
     public string Schema { get; set; } = "public";
     public string FrontendBaseUrl { get; set; } = "http://localhost:4200";
+    public int LivenessAppkeyLifetimeMinutes { get; set; } = 20;
     public AdminOptions Admin { get; set; } = new();
     public CorsOptions Cors { get; set; } = new();
 }

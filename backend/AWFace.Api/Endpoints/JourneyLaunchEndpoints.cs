@@ -82,7 +82,7 @@ public static class JourneyLaunchEndpoints
             var journey = await repository.ConsumeJourneyLaunchAsync(HashLaunchToken(launchToken), cancellationToken);
             if (journey is null)
             {
-                return Results.NotFound(new { message = "Token de lançamento inválido, expirado ou já utilizado." });
+                return Results.NotFound(new { message = "Token de lançamento inválido ou expirado." });
             }
 
             return Results.Ok(new JourneyLaunchResolveResponse(journey));

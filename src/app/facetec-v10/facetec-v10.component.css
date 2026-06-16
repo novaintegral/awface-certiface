@@ -8,6 +8,12 @@
   box-shadow: none;
 }
 
+.awface-facetec-page > .col-12 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 #custom-logo-container {
   margin: 0 auto 24px;
   text-align: center;
@@ -30,8 +36,13 @@ hr {
 }
 
 #delete-appkey,
+#cancel-process,
 .awface-facetec-page a {
   color: var(--awface-secondary, #315f88);
+}
+
+.awface-session-action {
+  margin-top: 10px;
 }
 
 .awface-session-heading {

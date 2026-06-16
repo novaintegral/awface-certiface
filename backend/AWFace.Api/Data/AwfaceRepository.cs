@@ -278,7 +278,6 @@ public sealed class AwfaceRepository
                     updated_at = now()
                 where launch_token_hash = @launch_token_hash
                   and launch_expires_at > now()
-                  and launch_consumed_at is null
                 returning id
                 """;
             command.Parameters.AddWithValue("launch_token_hash", launchTokenHash);
@@ -300,7 +299,7 @@ public sealed class AwfaceRepository
         return await GetJourneyByIdAsync(connection, journeyId.Value, cancellationToken);
     }
 
-    public async Task<JourneySession?> RegisterConsentAsync(Guid journeyId, ConsentDecision decision, string termsUrl, string privacyUrl, string? userAgent, string? ipAddress, CancellationToken cancellationToken)
+    public async Task<JourneySession?> RegisterConsentAsync(Guid journeyId, ConsentDecision decision, string? userAgent, string? ipAddress, CancellationToken cancellationToken)
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -309,15 +308,13 @@ public sealed class AwfaceRepository
         {
             consentCommand.Transaction = transaction;
             consentCommand.CommandText = """
-                insert into awface_liveness_consent (journey_id, decision, decided_at, ip_address, user_agent, terms_url, privacy_url)
-                values (@journey_id, cast(@decision as consent_decision), now(), cast(@ip_address as inet), @user_agent, @terms_url, @privacy_url)
+                insert into awface_liveness_consent (journey_id, decision, decided_at, ip_address, user_agent)
+                values (@journey_id, cast(@decision as consent_decision), now(), cast(@ip_address as inet), @user_agent)
                 """;
             consentCommand.Parameters.AddWithValue("journey_id", journeyId);
             consentCommand.Parameters.AddWithValue("decision", decision.ToString());
             consentCommand.Parameters.AddWithValue("ip_address", (object?)ipAddress ?? DBNull.Value);
             consentCommand.Parameters.AddWithValue("user_agent", (object?)userAgent ?? DBNull.Value);
-            consentCommand.Parameters.AddWithValue("terms_url", termsUrl);
-            consentCommand.Parameters.AddWithValue("privacy_url", privacyUrl);
             await consentCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -346,6 +343,7 @@ public sealed class AwfaceRepository
         command.CommandText = """
             update awface_liveness_journey
             set appkey = @appkey,
+                appkey_created_at = now(),
                 status = 'APPKEY_CREATED',
                 updated_at = now()
             where id = @journey_id
@@ -355,6 +353,25 @@ public sealed class AwfaceRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetJourneyByIdAsync(connection, journeyId, cancellationToken);
+    }
+
+    public async Task<string?> GetReusableAppkeyAsync(Guid journeyId, TimeSpan appkeyLifetime, CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select appkey
+            from awface_liveness_journey
+            where id = @journey_id
+              and appkey is not null
+              and appkey_created_at is not null
+              and appkey_created_at > now() - (@appkey_lifetime_minutes * interval '1 minute')
+            """;
+        command.Parameters.AddWithValue("journey_id", journeyId);
+        command.Parameters.AddWithValue("appkey_lifetime_minutes", Math.Max(1, (int)Math.Ceiling(appkeyLifetime.TotalMinutes)));
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is string appkey ? appkey : null;
     }
 
     public async Task MarkJourneyCompletedAsync(Guid journeyId, JsonDocument result, CancellationToken cancellationToken)

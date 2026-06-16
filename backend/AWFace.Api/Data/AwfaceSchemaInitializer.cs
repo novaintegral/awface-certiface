@@ -22,11 +22,16 @@ public sealed class AwfaceSchemaInitializer
                 add column if not exists secondary_color text not null default '#315f88';
 
             alter table awface_liveness_journey
+                add column if not exists appkey_created_at timestamptz,
                 add column if not exists launch_token_hash text,
                 add column if not exists launch_expires_at timestamptz,
                 add column if not exists launch_consumed_at timestamptz,
                 add column if not exists host_reference text,
                 add column if not exists host_metadata jsonb;
+
+            alter table awface_liveness_consent
+                drop column if exists terms_url,
+                drop column if exists privacy_url;
 
             create unique index if not exists ux_awface_liveness_journey_launch_token_hash
                 on awface_liveness_journey (launch_token_hash)

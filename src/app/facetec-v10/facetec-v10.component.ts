@@ -23,6 +23,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   appkey: any;
   facetecStrings: any;
   activeSession: AwfaceJourneySession | null = null;
+  isAutonomousJourney = false;
 
   private faceTecSDKInstance!: FaceTecSDKInstance;
   private themeHelpers!: ThemeHelpers;
@@ -42,6 +43,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   async ngOnInit() {
     this.appkey = window.localStorage.getItem('appkey');
     this.activeSession = this.awfaceService.getActiveSession();
+    this.isAutonomousJourney = this.awfaceService.getActiveJourneySource() === 'AUTONOMOUS';
 
     this.FacetecLogo = this.awfaceService.getLogoSource(this.activeSession?.tenant.logoBase64);
 
@@ -76,6 +78,14 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     window.localStorage.removeItem('awface.completion');
 
     this.router.navigateByUrl('/journey-start');
+  };
+
+  public cancelProcess() {
+    window.localStorage.removeItem('appkey');
+    window.localStorage.removeItem('hasLiveness');
+    window.localStorage.removeItem('awface.completion');
+
+    window.close();
   };
 
   private initializeFaceTecSDK = (): void => {

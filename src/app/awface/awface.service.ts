@@ -19,6 +19,7 @@ const TENANTS_KEY = 'awface.tenants';
 const SESSIONS_KEY = 'awface.sessions';
 const ADMIN_SESSION_KEY = 'awface.admin.session';
 const ACTIVE_SESSION_KEY = 'awface.activeJourneySessionId';
+const ACTIVE_SESSION_SOURCE_KEY = 'awface.activeJourneySource';
 const COMPLETION_KEY = 'awface.completion';
 
 @Injectable({ providedIn: 'root' })
@@ -124,6 +125,7 @@ export class AwfaceService {
 
     localStorage.removeItem('appkey');
     localStorage.removeItem('awface.completion');
+    localStorage.setItem(ACTIVE_SESSION_SOURCE_KEY, 'ASSISTED');
 
     return this.http.post<AwfaceJourneySession>(`${this.apiBaseUrl}/api/awface/journeys`, sanitizedRequest).pipe(
       tap(session => this.persistActiveSession(session)),
@@ -168,6 +170,7 @@ export class AwfaceService {
   consumeJourneyLaunch(launchToken: string): Observable<AwfaceJourneySession> {
     localStorage.removeItem('appkey');
     localStorage.removeItem(COMPLETION_KEY);
+    localStorage.setItem(ACTIVE_SESSION_SOURCE_KEY, 'AUTONOMOUS');
 
     return this.http.post<AwfaceJourneyLaunchResolveResponse>(
       `${this.apiBaseUrl}/api/awface/journey-launches/${encodeURIComponent(launchToken)}/consume`,
@@ -185,6 +188,10 @@ export class AwfaceService {
     }
 
     return this.getLocalSessions().find(session => session.id === sessionId) || null;
+  }
+
+  getActiveJourneySource(): 'ASSISTED' | 'AUTONOMOUS' {
+    return localStorage.getItem(ACTIVE_SESSION_SOURCE_KEY) === 'AUTONOMOUS' ? 'AUTONOMOUS' : 'ASSISTED';
   }
 
   registerConsent(sessionId: string, decision: AwfaceConsentDecision): Observable<AwfaceJourneySession> {

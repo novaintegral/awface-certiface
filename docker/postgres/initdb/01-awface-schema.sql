@@ -30,6 +30,9 @@ CREATE TABLE awface_tenant (
   terms_url text NOT NULL,
   privacy_url text NOT NULL,
   logo_base64 text,
+  theme text NOT NULL DEFAULT 'LIGHT',
+  primary_color text NOT NULL DEFAULT '#007060',
+  secondary_color text NOT NULL DEFAULT '#315f88',
   callback_url text NOT NULL,
   secure_callback_token text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -61,6 +64,11 @@ CREATE TABLE awface_liveness_journey (
   appkey_created_at timestamptz,
   status journey_status NOT NULL DEFAULT 'CREATED',
   user_agent text,
+  launch_token_hash text,
+  launch_expires_at timestamptz,
+  launch_consumed_at timestamptz,
+  host_reference text,
+  host_metadata jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   completed_at timestamptz
@@ -69,6 +77,12 @@ CREATE TABLE awface_liveness_journey (
 CREATE INDEX awface_liveness_journey_tenant_idx ON awface_liveness_journey (tenant_id, created_at DESC);
 CREATE INDEX awface_liveness_journey_external_idx ON awface_liveness_journey (tenant_id, external_client_id);
 CREATE INDEX awface_liveness_journey_appkey_idx ON awface_liveness_journey (appkey);
+CREATE UNIQUE INDEX ux_awface_liveness_journey_launch_token_hash
+  ON awface_liveness_journey (launch_token_hash)
+  WHERE launch_token_hash IS NOT NULL;
+CREATE INDEX ix_awface_liveness_journey_launch_expires_at
+  ON awface_liveness_journey (launch_expires_at)
+  WHERE launch_token_hash IS NOT NULL;
 
 CREATE TABLE awface_liveness_consent (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

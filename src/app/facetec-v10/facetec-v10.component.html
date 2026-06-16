@@ -1,8 +1,5 @@
 <div class="row awface-facetec-page" [ngStyle]="awfaceService.getTenantThemeStyle(activeSession?.tenant)">
-  <div class="col-12 mt-4">
-    <a [routerLink]="['/journey-start']">Voltar</a>
-  </div>
-  <div class="col-12 my-4">
+  <div class="col-12 mt-4 mb-2">
     <div class="wrapping-box-container">
       <div id="controls" class="controls">
         <div id="custom-logo-container">
@@ -27,10 +24,15 @@
         <hr />
       </div>
     </div>
-  </div>
-  <div class="col-12 text-center">
-    <button type="button" id="delete-appkey" variant="link" class="btn btn-link" (click)="deleteAppKey()">
-      Recomeçar
-    </button>
+    <div class="text-center awface-session-action" *ngIf="!isAutonomousJourney">
+      <button type="button" id="delete-appkey" variant="link" class="btn btn-link" (click)="deleteAppKey()">
+        Recomeçar
+      </button>
+    </div>
+    <div class="text-center awface-session-action" *ngIf="isAutonomousJourney">
+      <button type="button" id="cancel-process" variant="link" class="btn btn-link" (click)="cancelProcess()">
+        Cancelar o processo
+      </button>
+    </div>
   </div>
 </div>

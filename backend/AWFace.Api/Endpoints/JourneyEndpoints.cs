@@ -1,7 +1,9 @@
 using AWFace.Api.Contracts;
+using AWFace.Api.Configuration;
 using AWFace.Api.Data;
 using AWFace.Api.Domain;
 using AWFace.Api.Services;
+using Microsoft.Extensions.Options;
 
 namespace AWFace.Api.Endpoints;
 
@@ -60,8 +62,6 @@ public static class JourneyEndpoints
             var updated = await repository.RegisterConsentAsync(
                 journeyId,
                 request.Decision,
-                journey.Tenant.TermsUrl,
-                journey.Tenant.PrivacyUrl,
                 httpContext.Request.Headers.UserAgent.ToString(),
                 httpContext.Connection.RemoteIpAddress?.ToString(),
                 cancellationToken
@@ -74,6 +74,7 @@ public static class JourneyEndpoints
             Guid journeyId,
             AwfaceRepository repository,
             CertifaceClient certiface,
+            IOptions<AwfaceOptions> options,
             CancellationToken cancellationToken) =>
         {
             var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
@@ -87,9 +88,11 @@ public static class JourneyEndpoints
                 return Results.BadRequest(new { message = "A jornada precisa de consentimento aceito antes da criação da appkey." });
             }
 
-            if (!string.IsNullOrWhiteSpace(journey.Appkey))
+            var appkeyLifetime = TimeSpan.FromMinutes(Math.Max(1, options.Value.LivenessAppkeyLifetimeMinutes));
+            var reusableAppkey = await repository.GetReusableAppkeyAsync(journeyId, appkeyLifetime, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(reusableAppkey))
             {
-                return Results.Ok(new AppkeyResponse(journey.Appkey));
+                return Results.Ok(new AppkeyResponse(reusableAppkey));
             }
 
             try
