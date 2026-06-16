@@ -7,6 +7,7 @@ import {
   AwfaceAdminCredentials,
   AwfaceConsentDecision,
   AwfaceCompletionResult,
+  AwfaceJourneyLaunchResolveResponse,
   AwfaceJourneySession,
   AwfaceJourneyStartRequest,
   AwfaceJourneyType,
@@ -62,6 +63,7 @@ export class AwfaceService {
 
   listTenants(): Observable<AwfaceTenant[]> {
     return this.http.get<AwfaceTenant[]>(`${this.apiBaseUrl}/api/awface/admin/tenants`).pipe(
+      map(tenants => tenants.map(tenant => this.withTenantDefaults(tenant))),
       catchError(() => of(this.getLocalTenants()))
     );
   }
@@ -72,6 +74,9 @@ export class AwfaceService {
       ...tenant,
       id: tenant.id || crypto.randomUUID(),
       integrationToken: tenant.integrationToken || this.createIntegrationToken(),
+      theme: tenant.theme || 'LIGHT',
+      primaryColor: this.normalizeColor(tenant.primaryColor, '#007060'),
+      secondaryColor: this.normalizeColor(tenant.secondaryColor, '#315f88'),
       createdAt: tenant.createdAt || now,
       updatedAt: now,
     };
@@ -160,6 +165,19 @@ export class AwfaceService {
     );
   }
 
+  consumeJourneyLaunch(launchToken: string): Observable<AwfaceJourneySession> {
+    localStorage.removeItem('appkey');
+    localStorage.removeItem(COMPLETION_KEY);
+
+    return this.http.post<AwfaceJourneyLaunchResolveResponse>(
+      `${this.apiBaseUrl}/api/awface/journey-launches/${encodeURIComponent(launchToken)}/consume`,
+      {}
+    ).pipe(
+      map(response => response.session),
+      tap(session => this.persistActiveSession(session))
+    );
+  }
+
   getActiveSession(): AwfaceJourneySession | null {
     const sessionId = localStorage.getItem(ACTIVE_SESSION_KEY);
     if (!sessionId) {
@@ -235,6 +253,24 @@ export class AwfaceService {
     return `data:image/png;base64,${logo.replace(/\s/g, '')}`;
   }
 
+  getTenantThemeStyle(tenant?: AwfaceTenant | null): Record<string, string> {
+    const primary = this.normalizeColor(tenant?.primaryColor, '#007060');
+    const secondary = this.normalizeColor(tenant?.secondaryColor, '#315f88');
+    const dark = tenant?.theme === 'DARK';
+
+    return {
+      '--awface-primary': primary,
+      '--awface-secondary': secondary,
+      '--awface-page-bg': dark ? '#0f172a' : '#ffffff',
+      '--awface-panel-bg': dark ? '#111827' : '#ffffff',
+      '--awface-heading': dark ? '#f8fafc' : '#07152f',
+      '--awface-text': dark ? '#dbe4ee' : '#51606f',
+      '--awface-muted': dark ? '#94a3b8' : '#5b6777',
+      '--awface-border': dark ? '#263449' : '#e7edf3',
+      '--awface-soft-primary': this.hexToRgba(primary, dark ? 0.18 : 0.12),
+    };
+  }
+
   private markSessionAppkey(sessionId: string, appkey: string): void {
     localStorage.setItem('appkey', appkey);
 
@@ -270,11 +306,13 @@ export class AwfaceService {
   }
 
   private findTenantByToken(integrationToken: string): AwfaceTenant | undefined {
-    return this.getLocalTenants().find(tenant => tenant.integrationToken === integrationToken);
+    const tenant = this.getLocalTenants().find(item => item.integrationToken === integrationToken);
+    return tenant ? this.withTenantDefaults(tenant) : undefined;
   }
 
   private getLocalTenants(): AwfaceTenant[] {
-    return JSON.parse(localStorage.getItem(TENANTS_KEY) || '[]');
+    return (JSON.parse(localStorage.getItem(TENANTS_KEY) || '[]') as AwfaceTenant[])
+      .map(tenant => this.withTenantDefaults(tenant));
   }
 
   private setLocalTenants(tenants: AwfaceTenant[]): void {
@@ -299,6 +337,9 @@ export class AwfaceService {
         status: 'ACTIVE',
         termsUrl: 'https://awface.com.br/termos',
         privacyUrl: 'https://awface.com.br/privacidade',
+        theme: 'LIGHT',
+        primaryColor: '#007060',
+        secondaryColor: '#315f88',
         callbackUrl: 'https://host.example.com/webhook/awface',
         secureCallbackToken: 'demo-secure-callback-token',
         credentials: [
@@ -312,6 +353,29 @@ export class AwfaceService {
         updatedAt: now,
       },
     ]);
+  }
+
+  private withTenantDefaults(tenant: AwfaceTenant): AwfaceTenant {
+    return {
+      ...tenant,
+      theme: tenant.theme || 'LIGHT',
+      primaryColor: this.normalizeColor(tenant.primaryColor, '#007060'),
+      secondaryColor: this.normalizeColor(tenant.secondaryColor, '#315f88'),
+    };
+  }
+
+  private normalizeColor(value: string | undefined, fallback: string): string {
+    return value?.trim() || fallback;
+  }
+
+  private hexToRgba(color: string, alpha: number): string {
+    const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color.trim());
+    if (!match) {
+      return `rgba(0, 112, 96, ${alpha})`;
+    }
+
+    const [, r, g, b] = match;
+    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
   }
 
 }

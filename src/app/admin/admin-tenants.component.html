@@ -43,7 +43,27 @@
 
         <label>
           Token de integração
-          <input name="integrationToken" [(ngModel)]="selectedTenant.integrationToken" placeholder="Gerado ao salvar se vazio" />
+          <span class="token-field">
+            <input name="integrationToken" [(ngModel)]="selectedTenant.integrationToken" autocomplete="off" />
+            <button
+              type="button"
+              class="icon-button token-action"
+              aria-label="Regenerar token de integração"
+              title="Regenerar token de integração"
+              (click)="regenerateIntegrationToken()"
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              class="icon-button token-action"
+              aria-label="Copiar token de integração"
+              title="Copiar token de integração"
+              (click)="copyIntegrationToken()"
+            >
+              ⧉
+            </button>
+          </span>
         </label>
 
         <label>
@@ -54,6 +74,30 @@
         <label>
           Política de privacidade
           <input name="privacyUrl" [(ngModel)]="selectedTenant.privacyUrl" type="url" />
+        </label>
+
+        <label>
+          Tema da jornada
+          <select name="theme" [(ngModel)]="selectedTenant.theme">
+            <option value="LIGHT">Claro</option>
+            <option value="DARK">Escuro</option>
+          </select>
+        </label>
+
+        <label>
+          Cor principal
+          <span class="color-field">
+            <input name="primaryColorPicker" [(ngModel)]="selectedTenant.primaryColor" type="color" />
+            <input name="primaryColor" [(ngModel)]="selectedTenant.primaryColor" autocomplete="off" />
+          </span>
+        </label>
+
+        <label>
+          Cor secundária
+          <span class="color-field">
+            <input name="secondaryColorPicker" [(ngModel)]="selectedTenant.secondaryColor" type="color" />
+            <input name="secondaryColor" [(ngModel)]="selectedTenant.secondaryColor" autocomplete="off" />
+          </span>
         </label>
 
         <label>
@@ -69,11 +113,6 @@
         <label class="full-line">
           Logotipo do tenant
           <input name="logoFile" type="file" accept="image/*" (change)="onLogoFileSelected($event)" />
-        </label>
-
-        <label class="full-line">
-          Base64 ou data URL do logotipo
-          <textarea name="logoBase64" [(ngModel)]="selectedTenant.logoBase64" rows="3"></textarea>
         </label>
 
         <div class="logo-preview full-line" *ngIf="selectedTenant.logoBase64">

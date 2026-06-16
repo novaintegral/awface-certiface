@@ -15,6 +15,7 @@ import { SendDigitalCnhComponent } from './send-digital-cnh/send-digital-cnh.com
 import { IproovComponent } from './iproov/iproov.component';
 import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
 import { JourneyComponent } from './journey/journey.component';
+import { JourneyLaunchComponent } from './journey-launch/journey-launch.component';
 import { JourneyCompletionComponent } from './journey-completion/journey-completion.component';
 import { AdminLoginComponent } from './admin/admin-login.component';
 import { AdminTenantsComponent } from './admin/admin-tenants.component';
@@ -32,6 +33,7 @@ import { AdminTenantsComponent } from './admin/admin-tenants.component';
     IproovComponent,
     FacetecV10Component,
     JourneyComponent,
+    JourneyLaunchComponent,
     JourneyCompletionComponent,
     AdminLoginComponent,
     AdminTenantsComponent

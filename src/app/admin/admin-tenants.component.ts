@@ -132,6 +132,28 @@ export class AdminTenantsComponent implements OnInit {
     return this.awfaceService.getLogoSource(this.selectedTenant.logoBase64);
   }
 
+  regenerateIntegrationToken(): void {
+    this.selectedTenant.integrationToken = this.createIntegrationToken();
+    this.message = 'Token de integração regenerado. Salve o tenant para persistir a alteração.';
+  }
+
+  copyIntegrationToken(token = this.selectedTenant.integrationToken): void {
+    token = token?.trim();
+    if (!token) {
+      this.message = 'Não há token de integração para copiar.';
+      return;
+    }
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(token)
+        .then(() => this.message = 'Token de integração copiado para a área de transferência.')
+        .catch(() => this.copyIntegrationTokenFallback(token));
+      return;
+    }
+
+    this.copyIntegrationTokenFallback(token);
+  }
+
   statusLabel(status: AwfaceTenantStatus): string {
     const labels: Record<AwfaceTenantStatus, string> = {
       ACTIVE: 'Ativo',
@@ -152,17 +174,40 @@ export class AdminTenantsComponent implements OnInit {
     return {
       id: '',
       name: '',
-      integrationToken: '',
+      integrationToken: this.createIntegrationToken(),
       status: 'ACTIVE',
       termsUrl: '',
       privacyUrl: '',
       logoBase64: '',
+      theme: 'LIGHT',
+      primaryColor: '#007060',
+      secondaryColor: '#315f88',
       callbackUrl: '',
       secureCallbackToken: '',
       credentials: [],
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  private createIntegrationToken(): string {
+    return `awf_${crypto.randomUUID().replace(/-/g, '')}`;
+  }
+
+  private copyIntegrationTokenFallback(token: string): void {
+    const textarea = document.createElement('textarea');
+    textarea.value = token;
+    textarea.setAttribute('readonly', 'true');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    this.message = copied
+      ? 'Token de integração copiado para a área de transferência.'
+      : 'Não foi possível copiar o token automaticamente.';
   }
 
   private cloneTenant(tenant: AwfaceTenant): AwfaceTenant {

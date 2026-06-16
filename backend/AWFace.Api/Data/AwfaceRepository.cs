@@ -28,7 +28,7 @@ public sealed class AwfaceRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             select id, name, integration_token, status::text, terms_url, privacy_url, logo_base64,
-                   callback_url, secure_callback_token, created_at, updated_at
+                   theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
             from awface_tenant
             order by created_at desc
             """;
@@ -77,11 +77,11 @@ public sealed class AwfaceRepository
             command.CommandText = """
                 insert into awface_tenant (
                     id, name, integration_token, status, terms_url, privacy_url, logo_base64,
-                    callback_url, secure_callback_token, created_at, updated_at
+                    theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
                 )
                 values (
                     @id, @name, @integration_token, cast(@status as tenant_status), @terms_url, @privacy_url, @logo_base64,
-                    @callback_url, @secure_callback_token, now(), now()
+                    @theme, @primary_color, @secondary_color, @callback_url, @secure_callback_token, now(), now()
                 )
                 on conflict (id) do update set
                     name = excluded.name,
@@ -90,6 +90,9 @@ public sealed class AwfaceRepository
                     terms_url = excluded.terms_url,
                     privacy_url = excluded.privacy_url,
                     logo_base64 = excluded.logo_base64,
+                    theme = excluded.theme,
+                    primary_color = excluded.primary_color,
+                    secondary_color = excluded.secondary_color,
                     callback_url = excluded.callback_url,
                     secure_callback_token = excluded.secure_callback_token,
                     updated_at = now()
@@ -101,6 +104,9 @@ public sealed class AwfaceRepository
             command.Parameters.AddWithValue("terms_url", request.TermsUrl.Trim());
             command.Parameters.AddWithValue("privacy_url", request.PrivacyUrl.Trim());
             command.Parameters.AddWithValue("logo_base64", (object?)request.LogoBase64 ?? DBNull.Value);
+            command.Parameters.AddWithValue("theme", NormalizeTheme(request.Theme));
+            command.Parameters.AddWithValue("primary_color", NormalizeColor(request.PrimaryColor, "#007060"));
+            command.Parameters.AddWithValue("secondary_color", NormalizeColor(request.SecondaryColor, "#315f88"));
             command.Parameters.AddWithValue("callback_url", request.CallbackUrl.Trim());
             command.Parameters.AddWithValue("secure_callback_token", request.SecureCallbackToken.Trim());
             await command.ExecuteNonQueryAsync(cancellationToken);
@@ -211,6 +217,87 @@ public sealed class AwfaceRepository
 
         return await GetJourneyByIdAsync(connection, journeyId, cancellationToken)
             ?? throw new InvalidOperationException("Jornada criada, mas não encontrada.");
+    }
+
+    public async Task<JourneySession> CreateJourneyLaunchAsync(
+        Tenant tenant,
+        JourneyLaunchRequest request,
+        string launchTokenHash,
+        DateTimeOffset launchExpiresAt,
+        string? userAgent,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        var journeyId = Guid.NewGuid();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into awface_liveness_journey (
+                id, tenant_id, journey_type, cpf_hash, cpf_ciphertext, full_name_ciphertext,
+                birth_date_ciphertext, external_client_id, status, user_agent,
+                launch_token_hash, launch_expires_at, host_reference, host_metadata,
+                created_at, updated_at
+            )
+            values (
+                @id, @tenant_id, cast(@journey_type as journey_type), @cpf_hash, @cpf_ciphertext, @full_name_ciphertext,
+                @birth_date_ciphertext, @external_client_id, 'CREATED', @user_agent,
+                @launch_token_hash, @launch_expires_at, @host_reference, cast(@host_metadata as jsonb),
+                now(), now()
+            )
+            """;
+        command.Parameters.AddWithValue("id", journeyId);
+        command.Parameters.AddWithValue("tenant_id", tenant.Id);
+        command.Parameters.AddWithValue("journey_type", request.JourneyType.ToString());
+        command.Parameters.AddWithValue("cpf_hash", _protector.Hash(JourneyValidator.DigitsOnly(request.Cpf)));
+        command.Parameters.AddWithValue("cpf_ciphertext", _protector.Protect(JourneyValidator.DigitsOnly(request.Cpf)));
+        command.Parameters.AddWithValue("full_name_ciphertext", _protector.Protect(request.FullName.Trim()));
+        command.Parameters.AddWithValue("birth_date_ciphertext", _protector.Protect(request.BirthDate.ToString("yyyy-MM-dd")));
+        command.Parameters.AddWithValue("external_client_id", request.ExternalClientId.Trim());
+        command.Parameters.AddWithValue("user_agent", (object?)userAgent ?? DBNull.Value);
+        command.Parameters.AddWithValue("launch_token_hash", launchTokenHash);
+        command.Parameters.AddWithValue("launch_expires_at", launchExpiresAt);
+        command.Parameters.AddWithValue("host_reference", (object?)request.HostReference?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("host_metadata", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(request.Metadata ?? new { }, JsonOptions));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+
+        return await GetJourneyByIdAsync(connection, journeyId, cancellationToken)
+            ?? throw new InvalidOperationException("Jornada autonoma criada, mas nao encontrada.");
+    }
+
+    public async Task<JourneySession?> ConsumeJourneyLaunchAsync(string launchTokenHash, CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        Guid? journeyId = null;
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                update awface_liveness_journey
+                set launch_consumed_at = coalesce(launch_consumed_at, now()),
+                    updated_at = now()
+                where launch_token_hash = @launch_token_hash
+                  and launch_expires_at > now()
+                  and launch_consumed_at is null
+                returning id
+                """;
+            command.Parameters.AddWithValue("launch_token_hash", launchTokenHash);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                journeyId = reader.GetGuid(0);
+            }
+        }
+
+        if (journeyId is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return await GetJourneyByIdAsync(connection, journeyId.Value, cancellationToken);
     }
 
     public async Task<JourneySession?> RegisterConsentAsync(Guid journeyId, ConsentDecision decision, string termsUrl, string privacyUrl, string? userAgent, string? ipAddress, CancellationToken cancellationToken)
@@ -365,7 +452,7 @@ public sealed class AwfaceRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             select id, name, integration_token, status::text, terms_url, privacy_url, logo_base64,
-                   callback_url, secure_callback_token, created_at, updated_at
+                   theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
             from awface_tenant
             where integration_token = @integration_token
             """;
@@ -386,7 +473,7 @@ public sealed class AwfaceRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             select id, name, integration_token, status::text, terms_url, privacy_url, logo_base64,
-                   callback_url, secure_callback_token, created_at, updated_at
+                   theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
             from awface_tenant
             where id = @id
             """;
@@ -462,9 +549,12 @@ public sealed class AwfaceRepository
             reader.IsDBNull(6) ? null : reader.GetString(6),
             reader.GetString(7),
             reader.GetString(8),
+            reader.GetString(9),
+            reader.GetString(10),
+            reader.GetString(11),
             credentials,
-            reader.GetFieldValue<DateTimeOffset>(9),
-            reader.GetFieldValue<DateTimeOffset>(10)
+            reader.GetFieldValue<DateTimeOffset>(12),
+            reader.GetFieldValue<DateTimeOffset>(13)
         );
     }
 
@@ -480,9 +570,12 @@ public sealed class AwfaceRepository
             reader.IsDBNull(16) ? null : reader.GetString(16),
             reader.GetString(17),
             reader.GetString(18),
+            reader.GetString(19),
+            reader.GetString(20),
+            reader.GetString(21),
             credentials,
-            reader.GetFieldValue<DateTimeOffset>(19),
-            reader.GetFieldValue<DateTimeOffset>(20)
+            reader.GetFieldValue<DateTimeOffset>(22),
+            reader.GetFieldValue<DateTimeOffset>(23)
         );
 
         return new JourneySession(
@@ -515,11 +608,23 @@ public sealed class AwfaceRepository
         command.Parameters.AddWithValue(name, NpgsqlDbType.Jsonb, "{}");
     }
 
+    private static string NormalizeTheme(string? value)
+    {
+        var theme = value?.Trim().ToUpperInvariant();
+        return theme is "DARK" ? "DARK" : "LIGHT";
+    }
+
+    private static string NormalizeColor(string? value, string fallback)
+    {
+        var color = value?.Trim();
+        return string.IsNullOrWhiteSpace(color) ? fallback : color;
+    }
+
     private const string JourneySelectSql = """
         select j.id, j.journey_type::text, j.cpf_ciphertext, j.full_name_ciphertext, j.birth_date_ciphertext,
                j.external_client_id, j.status::text, j.appkey, j.created_at, j.updated_at,
                t.id, t.name, t.integration_token, t.status::text, t.terms_url, t.privacy_url, t.logo_base64,
-               t.callback_url, t.secure_callback_token, t.created_at, t.updated_at
+               t.theme, t.primary_color, t.secondary_color, t.callback_url, t.secure_callback_token, t.created_at, t.updated_at
         from awface_liveness_journey j
         join awface_tenant t on t.id = j.tenant_id
         """;

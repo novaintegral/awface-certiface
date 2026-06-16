@@ -31,12 +31,19 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<SensitiveDataProtector>();
 builder.Services.AddScoped<AwfaceDb>();
 builder.Services.AddScoped<AwfaceRepository>();
+builder.Services.AddScoped<AwfaceSchemaInitializer>();
 builder.Services.AddHttpClient<CertifaceClient>();
 builder.Services.AddHttpClient("TenantCallback");
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<ILoggerProvider, FileLoggerProvider>();
 
 var app = builder.Build();
+
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var schemaInitializer = scope.ServiceProvider.GetRequiredService<AwfaceSchemaInitializer>();
+    await schemaInitializer.InitializeAsync(CancellationToken.None);
+}
 
 app.UseCors("Angular");
 
@@ -48,6 +55,7 @@ app.MapGet("/health", () => Results.Ok(new
 })).WithTags("Health");
 
 app.MapAdminEndpoints();
+app.MapJourneyLaunchEndpoints();
 app.MapJourneyEndpoints();
 app.MapFacetecEndpoints();
 app.MapWebhookEndpoints();

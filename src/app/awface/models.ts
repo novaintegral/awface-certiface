@@ -2,6 +2,8 @@ export type AwfaceJourneyType = 'LIVENESS' | 'LIVENESS_FACE_BUREAU' | 'LIVENESS_
 
 export type AwfaceTenantStatus = 'ACTIVE' | 'BLOCKED' | 'CANCELLED';
 
+export type AwfaceTenantTheme = 'LIGHT' | 'DARK';
+
 export type AwfaceConsentDecision = 'ACCEPTED' | 'REFUSED';
 
 export interface AwfaceLivenessCredential {
@@ -18,6 +20,9 @@ export interface AwfaceTenant {
   termsUrl: string;
   privacyUrl: string;
   logoBase64?: string;
+  theme: AwfaceTenantTheme;
+  primaryColor: string;
+  secondaryColor: string;
   callbackUrl: string;
   secureCallbackToken: string;
   credentials: AwfaceLivenessCredential[];
@@ -35,6 +40,22 @@ export interface AwfaceJourneySubject {
 export interface AwfaceJourneyStartRequest extends AwfaceJourneySubject {
   integrationToken: string;
   journeyType: AwfaceJourneyType;
+}
+
+export interface AwfaceJourneyLaunchRequest extends AwfaceJourneyStartRequest {
+  hostReference?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AwfaceJourneyLaunchResponse {
+  journeyId: string;
+  launchToken: string;
+  launchUrl: string;
+  expiresAt: string;
+}
+
+export interface AwfaceJourneyLaunchResolveResponse {
+  session: AwfaceJourneySession;
 }
 
 export interface AwfaceJourneySession {

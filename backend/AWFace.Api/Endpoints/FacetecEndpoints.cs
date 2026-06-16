@@ -118,20 +118,22 @@ public static class FacetecEndpoints
                 idExternoCliente = journey.Subject.ExternalClientId,
                 result
             };
+            var callbackPayloadJson = JsonSerializer.Serialize(callbackPayload);
 
-            // Simulação temporária enquanto a aplicação host ainda não responde ao UrlCallback.
-            // Mantém o fluxo assíncrono e o registro em banco, mas força sucesso HTTP 200.
-            var callbackDelivered = true;
-            int? callbackStatus = StatusCodes.Status200OK;
-            string? callbackResponseBody = "UrlCallback simulado com sucesso.";
+            // // Simulação temporária enquanto a aplicação host ainda não responde ao UrlCallback.
+            // // Mantém o fluxo assíncrono e o registro em banco, mas força sucesso HTTP 200.
+            // var callbackDelivered = true;
+            // int? callbackStatus = StatusCodes.Status200OK;
+            // string? callbackResponseBody = "UrlCallback simulado com sucesso.";
 
-            logger.LogInformation(
-                "UrlCallback simulado para JourneyId {JourneyId}. TargetUrl={TargetUrl}.",
-                journey.Id,
-                journey.Tenant.CallbackUrl
-            );
+            // logger.LogInformation(
+            //     "UrlCallback simulado para JourneyId {JourneyId}. POST real desativado. TargetUrl={TargetUrl}. Payload={Payload}.",
+            //     journey.Id,
+            //     journey.Tenant.CallbackUrl,
+            //     callbackPayloadJson
+            // );
 
-            /*
+            
             // Fluxo real do UrlCallback. Reative este bloco quando a aplicação host estiver pronta
             // e comente/remova a simulação temporária acima.
             var callbackDelivered = false;
@@ -160,7 +162,7 @@ public static class FacetecEndpoints
                 callbackResponseBody = exception.Message;
                 logger.LogError(exception, "Falha ao enviar UrlCallback para JourneyId {JourneyId}.", journey.Id);
             }
-            */
+            
 
             await repository.RegisterCallbackDeliveryAsync(
                 journey.Id,

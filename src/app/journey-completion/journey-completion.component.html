@@ -1,4 +1,4 @@
-<div class="completion-page">
+<div class="completion-page" [ngStyle]="awfaceService.getTenantThemeStyle(session?.tenant)">
   <section class="completion-panel" [class.failed]="!success">
     <img class="tenant-logo" [src]="getTenantLogo()" [alt]="session?.tenant?.name || 'CertiFace'" />
 

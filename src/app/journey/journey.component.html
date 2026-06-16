@@ -1,4 +1,4 @@
-<main class="journey-shell">
+<main class="journey-shell" [ngStyle]="awfaceService.getTenantThemeStyle(session?.tenant)">
   <section class="journey-panel" *ngIf="step === 'identify'">
     <div class="brand-row">
       <img src="/assets/img/logo_certiface_trans.png" alt="AWFace" />
@@ -6,12 +6,7 @@
     </div>
 
     <div class="intro">
-      <p class="eyebrow">Prova de vida segura</p>
-      <h1>Vamos confirmar sua identidade em poucos passos.</h1>
-      <p>
-        Tenha um documento por perto, procure um lugar iluminado e siga as orientações na tela.
-        O processo é rápido e protege você contra fraudes.
-      </p>
+      <h1>Vamos confirmar sua identidade em poucos passos.</h1>      
     </div>
 
     <form class="journey-form" (ngSubmit)="startJourney()">

@@ -1,0 +1,33 @@
+<main class="journey-launch-shell" [ngStyle]="awfaceService.getTenantThemeStyle(session?.tenant)">
+  <section class="journey-launch-panel">
+    <img class="tenant-logo" [src]="getTenantLogo()" alt="AWFace" />
+
+    <div class="loader" *ngIf="status === 'loading'"></div>
+    <div class="consent-icon" *ngIf="status === 'consent'" aria-hidden="true">✓</div>
+    <div class="failed-icon" *ngIf="status === 'failed' || status === 'refused'" aria-hidden="true">!</div>
+
+    <p class="eyebrow">Validação de Prova de Vida</p>
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+
+    <div class="consent-copy" *ngIf="status === 'consent' && session">
+      <p>
+        Olá, gostaríamos de utilizar seus dados de biometria facial para evitar fraudes
+        e confirmar sua identidade durante este processo.
+      </p>
+      <p>
+        Consulte os documentos do serviço antes de continuar:
+        <a [href]="session.tenant.termsUrl" target="_blank" rel="noopener">Termos de uso</a>
+        e
+        <a [href]="session.tenant.privacyUrl" target="_blank" rel="noopener">Política de privacidade</a>.
+      </p>
+    </div>
+
+    <div class="consent-actions" *ngIf="status === 'consent'">
+      <button type="button" class="primary-action" (click)="acceptConsent()">Autorizo e quero continuar</button>
+      <button type="button" class="secondary-action" (click)="refuseConsent()">Não autorizo</button>
+    </div>
+
+    <a class="start-link" *ngIf="status === 'failed'" routerLink="/journey-start">Voltar para o início</a>
+  </section>
+</main>

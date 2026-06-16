@@ -19,6 +19,9 @@ public sealed record TenantUpsertRequest(
     string TermsUrl,
     string PrivacyUrl,
     string? LogoBase64,
+    string? Theme,
+    string? PrimaryColor,
+    string? SecondaryColor,
     string CallbackUrl,
     string SecureCallbackToken,
     IReadOnlyList<TenantCredentialDto> Credentials
@@ -34,6 +37,26 @@ public sealed record JourneyStartRequest(
     DateOnly BirthDate,
     string ExternalClientId
 );
+
+public sealed record JourneyLaunchRequest(
+    string IntegrationToken,
+    JourneyType JourneyType,
+    string Cpf,
+    string FullName,
+    DateOnly BirthDate,
+    string ExternalClientId,
+    string? HostReference,
+    object? Metadata
+);
+
+public sealed record JourneyLaunchResponse(
+    Guid JourneyId,
+    string LaunchToken,
+    string LaunchUrl,
+    DateTimeOffset ExpiresAt
+);
+
+public sealed record JourneyLaunchResolveResponse(JourneySession Session);
 
 public sealed record ConsentRequest(ConsentDecision Decision);
 

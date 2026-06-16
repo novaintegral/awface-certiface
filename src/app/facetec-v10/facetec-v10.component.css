@@ -1,3 +1,9 @@
+.awface-facetec-page {
+  min-height: 100vh;
+  background: var(--awface-page-bg, #fff);
+  color: var(--awface-text, #5b6777);
+}
+
 .wrapping-box-container {
   box-shadow: none;
 }
@@ -15,7 +21,17 @@
 
 hr {
   margin: 22px auto 0;
-  border-color: #e7edf7;
+  border-color: var(--awface-border, #e7edf7);
+}
+
+#liveness-button {
+  border-color: var(--awface-primary, #007060);
+  background: var(--awface-primary, #007060);
+}
+
+#delete-appkey,
+.awface-facetec-page a {
+  color: var(--awface-secondary, #315f88);
 }
 
 .awface-session-heading {
@@ -25,7 +41,7 @@ hr {
 
 .awface-session-heading p {
   margin: 0 0 6px;
-  color: #007060;
+  color: var(--awface-primary, #007060);
   font-size: 0.8rem;
   font-weight: 900;
   letter-spacing: 0;
@@ -34,14 +50,14 @@ hr {
 
 .awface-session-heading h1 {
   margin: 0 0 6px;
-  color: #111827;
+  color: var(--awface-heading, #111827);
   font-size: clamp(1.7rem, 5vw, 2.35rem);
   letter-spacing: 0;
 }
 
 .awface-session-heading span,
 .awface-helper {
-  color: #5b6777;
+  color: var(--awface-text, #5b6777);
 }
 
 .awface-helper {
@@ -57,7 +73,7 @@ hr {
   height: 18px;
   margin-left: 8px;
   border: 2px solid #d9e6ff;
-  border-top-color: #2f78ff;
+  border-top-color: var(--awface-primary, #2f78ff);
   border-radius: 50%;
   vertical-align: -4px;
   animation: awface-spin 0.8s linear infinite;
