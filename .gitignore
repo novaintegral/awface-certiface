@@ -9,6 +9,7 @@
 **/bin/
 **/obj/
 backend/AWFace.Api/logs/
+backend/AWFace.Api/storage/
 docker-data/
 
 # Node

@@ -5,8 +5,15 @@ public sealed class AwfaceOptions
     public string Schema { get; set; } = "public";
     public string FrontendBaseUrl { get; set; } = "http://localhost:4200";
     public int LivenessAppkeyLifetimeMinutes { get; set; } = 20;
+    public FaceStorageOptions FaceStorage { get; set; } = new();
     public AdminOptions Admin { get; set; } = new();
     public CorsOptions Cors { get; set; } = new();
+}
+
+public sealed class FaceStorageOptions
+{
+    public string RootPath { get; set; } = "storage/faces";
+    public string EncryptionKey { get; set; } = "dev-only-change-this-face-storage-key";
 }
 
 public sealed class AdminOptions

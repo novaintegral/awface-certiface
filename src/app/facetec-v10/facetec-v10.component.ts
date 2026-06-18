@@ -18,6 +18,8 @@ import { AwfaceCompletionResult, AwfaceJourneySession } from '../awface/models';
   styleUrls: ['./facetec-v10.component.css']
 })
 export class FacetecV10Component implements OnInit, OnDestroy {
+  private static readonly DeviceLocationStorageKey = 'awface.deviceLocation';
+
   FacetecLogo: string = '/assets/img/logo_certiface_trans.png';
   status: string = "";
   appkey: any;
@@ -46,6 +48,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     this.isAutonomousJourney = this.awfaceService.getActiveJourneySource() === 'AUTONOMOUS';
 
     this.FacetecLogo = this.awfaceService.getLogoSource(this.activeSession?.tenant.logoBase64);
+    await this.captureDeviceLocation();
 
     window.addEventListener('awface:liveness-session-completed', this.sessionCompletedHandler);
 
@@ -76,6 +79,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     window.localStorage.removeItem('appkey');
     window.localStorage.removeItem('hasLiveness');
     window.localStorage.removeItem('awface.completion');
+    window.localStorage.removeItem(FacetecV10Component.DeviceLocationStorageKey);
 
     this.router.navigateByUrl('/journey-start');
   };
@@ -84,9 +88,38 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     window.localStorage.removeItem('appkey');
     window.localStorage.removeItem('hasLiveness');
     window.localStorage.removeItem('awface.completion');
+    window.localStorage.removeItem(FacetecV10Component.DeviceLocationStorageKey);
 
     window.close();
   };
+
+  private captureDeviceLocation(): Promise<void> {
+    window.localStorage.removeItem(FacetecV10Component.DeviceLocationStorageKey);
+
+    if (!navigator.geolocation) {
+      return Promise.resolve();
+    }
+
+    return new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          window.localStorage.setItem(FacetecV10Component.DeviceLocationStorageKey, JSON.stringify({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            capturedAt: new Date().toISOString(),
+          }));
+          resolve();
+        },
+        () => resolve(),
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    });
+  }
 
   private initializeFaceTecSDK = (): void => {
     this.sdkV10.setResourceDirectory("../assets/core-sdk-v10/core-sdk/FaceTecSDK.js/resources");

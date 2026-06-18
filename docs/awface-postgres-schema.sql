@@ -85,11 +85,27 @@ CREATE TABLE awface_liveness_result (
   provider_status varchar(80) NOT NULL,
   id_externo_cliente varchar(255),
   data_criacao_appkey timestamptz,
-  certiface_payload jsonb,
-  facecaptcha_payload jsonb,
-  photos_payload jsonb,
-  raw_payload jsonb NOT NULL,
+  bureau_payload jsonb,
+  liveness_payload jsonb,
+  location_latitude double precision,
+  location_longitude double precision,
+  location_accuracy double precision,
+  location_captured_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE awface_liveness_face_asset (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  tenant_id uuid NOT NULL REFERENCES awface_tenant(id),
+  asset_type text NOT NULL,
+  storage_key text NOT NULL,
+  content_type text NOT NULL,
+  sha256 text NOT NULL,
+  size_bytes bigint NOT NULL,
+  encryption_algorithm text NOT NULL DEFAULT 'AES-256-GCM',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (journey_id, asset_type)
 );
 
 CREATE TABLE awface_callback_delivery (

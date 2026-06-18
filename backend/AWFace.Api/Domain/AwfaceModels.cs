@@ -81,3 +81,14 @@ public sealed record CallbackDeliveryStatus(
     string? ResponseBody,
     DateTimeOffset DeliveredAt
 );
+
+public sealed record JourneyFaceAsset(
+    Guid JourneyId,
+    string AssetType,
+    string StorageKey,
+    string ContentType,
+    string Sha256,
+    long SizeBytes,
+    string EncryptionAlgorithm,
+    DateTimeOffset CreatedAt
+);

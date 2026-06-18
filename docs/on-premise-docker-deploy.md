@@ -25,6 +25,8 @@ Ajuste principalmente:
 - `POSTGRES_PASSWORD`
 - `AWFACE_FRONTEND_BASE_URL`
 - `AWFACE_LIVENESS_APPKEY_LIFETIME_MINUTES`
+- `AWFACE_FACE_STORAGE_ROOT_PATH`
+- `AWFACE_FACE_STORAGE_ENCRYPTION_KEY`
 - `AWFACE_ADMIN_EMAIL`
 - `AWFACE_ADMIN_PASSWORD`
 
@@ -60,7 +62,15 @@ Os logs da API ficam em:
 ./docker-data/api-logs
 ```
 
-Não remova `./docker-data/postgres` se quiser preservar os dados entre recriações de container.
+As imagens de face capturadas nas provas de vida ficam em:
+
+```text
+./docker-data/awface-storage/faces
+```
+
+Os arquivos neste diretório são criptografados em repouso com AES-256-GCM. Preserve e proteja `AWFACE_FACE_STORAGE_ENCRYPTION_KEY`; sem essa chave, imagens já gravadas não poderão ser descriptografadas.
+
+Não remova `./docker-data/postgres` nem `./docker-data/awface-storage` se quiser preservar dados e evidências biométricas entre recriações de container.
 
 ## Banco de dados
 

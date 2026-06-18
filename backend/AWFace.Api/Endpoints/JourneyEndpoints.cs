@@ -148,6 +148,166 @@ public static class JourneyEndpoints
             });
         });
 
+        group.MapGet("/{journeyId:guid}/result", async (
+            Guid journeyId,
+            HttpContext httpContext,
+            AwfaceRepository repository,
+            CertifaceClient certiface,
+            CancellationToken cancellationToken) =>
+        {
+            var authorization = await AuthorizeHostJourneyAsync(journeyId, httpContext, repository, cancellationToken);
+            if (authorization.Result is not null)
+            {
+                return authorization.Result;
+            }
+
+            var journey = authorization.Journey!;
+            if (string.IsNullOrWhiteSpace(journey.Appkey))
+            {
+                return Results.BadRequest(new { message = "A jornada ainda não possui appkey para consulta do resultado." });
+            }
+
+            try
+            {
+                using var document = await certiface.GetDocumentResultAsync(journey.Appkey, cancellationToken);
+                return Results.Content(document.RootElement.GetRawText(), "application/json");
+            }
+            catch (CertifaceProviderException exception)
+            {
+                return Results.Json(
+                    new
+                    {
+                        message = "Não foi possível consultar o resultado da prova de vida na Certiface.",
+                        providerOperation = exception.Operation,
+                        providerStatus = exception.StatusCode
+                    },
+                    statusCode: StatusCodes.Status502BadGateway
+                );
+            }
+        });
+
+        group.MapGet("/{journeyId:guid}/face-image", async (
+            Guid journeyId,
+            HttpContext httpContext,
+            AwfaceRepository repository,
+            FaceAssetStorage faceStorage,
+            CancellationToken cancellationToken) =>
+        {
+            var authorization = await AuthorizeHostJourneyAsync(journeyId, httpContext, repository, cancellationToken);
+            if (authorization.Result is not null)
+            {
+                return authorization.Result;
+            }
+
+            var faceAsset = await repository.GetJourneyFaceAssetAsync(journeyId, "FRONTAL", cancellationToken);
+            if (faceAsset is null)
+            {
+                return Results.NotFound(new { message = "Imagem da face não encontrada para esta jornada." });
+            }
+
+            var faceContent = await faceStorage.ReadAsync(faceAsset.StorageKey, faceAsset.ContentType, cancellationToken);
+            if (faceContent is null)
+            {
+                return Results.NotFound(new { message = "Arquivo da imagem da face não encontrado no storage AWFace." });
+            }
+
+            var imageBase64 = Convert.ToBase64String(faceContent.Bytes);
+            return Results.Ok(new
+            {
+                journeyId = faceAsset.JourneyId,
+                assetType = faceAsset.AssetType,
+                contentType = faceAsset.ContentType,
+                imageBase64,
+                encoding = "base64",
+                sha256 = faceAsset.Sha256,
+                sizeBytes = faceAsset.SizeBytes,
+                encryptionAlgorithm = faceAsset.EncryptionAlgorithm,
+                createdAt = faceAsset.CreatedAt
+            });
+        });
+
+        group.MapGet("/{journeyId:guid}/face-image/file", async (
+            Guid journeyId,
+            HttpContext httpContext,
+            AwfaceRepository repository,
+            FaceAssetStorage faceStorage,
+            CancellationToken cancellationToken) =>
+        {
+            var authorization = await AuthorizeHostJourneyAsync(journeyId, httpContext, repository, cancellationToken);
+            if (authorization.Result is not null)
+            {
+                return authorization.Result;
+            }
+
+            var faceAsset = await repository.GetJourneyFaceAssetAsync(journeyId, "FRONTAL", cancellationToken);
+            if (faceAsset is null)
+            {
+                return Results.NotFound(new { message = "Imagem da face não encontrada para esta jornada." });
+            }
+
+            var faceContent = await faceStorage.ReadAsync(faceAsset.StorageKey, faceAsset.ContentType, cancellationToken);
+            if (faceContent is null)
+            {
+                return Results.NotFound(new { message = "Arquivo da imagem da face não encontrado no storage AWFace." });
+            }
+
+            var extension = faceAsset.ContentType == "image/png" ? "png" : "jpg";
+            return Results.File(
+                faceContent.Bytes,
+                faceAsset.ContentType,
+                $"{journeyId:N}-frontal.{extension}"
+            );
+        });
+
         return app;
     }
+
+    private static async Task<HostJourneyAuthorization> AuthorizeHostJourneyAsync(
+        Guid journeyId,
+        HttpContext httpContext,
+        AwfaceRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var integrationToken = GetIntegrationToken(httpContext);
+        if (string.IsNullOrWhiteSpace(integrationToken))
+        {
+            return new HostJourneyAuthorization(null, Results.Unauthorized());
+        }
+
+        var tenant = await repository.GetTenantByTokenAsync(integrationToken, cancellationToken);
+        if (tenant is null || tenant.Status != TenantStatus.ACTIVE)
+        {
+            return new HostJourneyAuthorization(null, Results.Unauthorized());
+        }
+
+        var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
+        if (journey is null)
+        {
+            return new HostJourneyAuthorization(null, Results.NotFound());
+        }
+
+        if (journey.Tenant.Id != tenant.Id)
+        {
+            return new HostJourneyAuthorization(null, Results.Forbid());
+        }
+
+        return new HostJourneyAuthorization(journey, null);
+    }
+
+    private static string? GetIntegrationToken(HttpContext httpContext)
+    {
+        if (httpContext.Request.Headers.TryGetValue("X-AWFace-Integration-Token", out var headerValue))
+        {
+            return headerValue.ToString();
+        }
+
+        if (httpContext.Request.Query.TryGetValue("integrationToken", out var queryValue))
+        {
+            return queryValue.ToString();
+        }
+
+        return null;
+    }
+
+    private sealed record HostJourneyAuthorization(JourneySession? Journey, IResult? Result);
 }

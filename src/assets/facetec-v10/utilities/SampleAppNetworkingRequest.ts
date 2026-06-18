@@ -22,11 +22,16 @@ export class SampleAppNetworkingRequest {
       return;
     }
 
-    const sessionRequestCallPayload: { requestBlob: string, appkey: any, userAgent: string } = {
+    const deviceLocation = this.getDeviceLocation();
+    const sessionRequestCallPayload: { requestBlob: string, appkey: any, userAgent: string, deviceLocation?: any } = {
       requestBlob: sessionRequestBlob,
       appkey: appkey,
       userAgent: userAgent
     };
+
+    if (deviceLocation) {
+      sessionRequestCallPayload.deviceLocation = deviceLocation;
+    }
 
     const openAndSendRequest = (attempt: number): any => {
       if (!environment.awfaceApiUrl) {
@@ -111,5 +116,19 @@ export class SampleAppNetworkingRequest {
 
   private static shouldRetryTransientError = (status: number, attempt: number): boolean => {
     return attempt < this.maxTransientRetries && status >= 500 && status < 600;
+  };
+
+  private static getDeviceLocation = (): any | null => {
+    const value = window.localStorage.getItem('awface.deviceLocation');
+    if (!value) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(value);
+    }
+    catch {
+      return null;
+    }
   };
 }

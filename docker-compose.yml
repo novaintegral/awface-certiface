@@ -36,6 +36,8 @@ services:
       Awface__Schema: "public"
       Awface__FrontendBaseUrl: "${AWFACE_FRONTEND_BASE_URL:-http://localhost:8080}"
       Awface__LivenessAppkeyLifetimeMinutes: "${AWFACE_LIVENESS_APPKEY_LIFETIME_MINUTES:-20}"
+      Awface__FaceStorage__RootPath: "${AWFACE_FACE_STORAGE_ROOT_PATH:-/app/storage/faces}"
+      Awface__FaceStorage__EncryptionKey: "${AWFACE_FACE_STORAGE_ENCRYPTION_KEY:-troque-esta-chave-em-producao}"
       Awface__Admin__Email: "${AWFACE_ADMIN_EMAIL:-admin@awface.local}"
       Awface__Admin__Password: "${AWFACE_ADMIN_PASSWORD:-Awface@123}"
       Awface__Cors__AllowedOrigins__0: "${AWFACE_FRONTEND_BASE_URL:-http://localhost:8080}"
@@ -47,6 +49,7 @@ services:
       - "${AWFACE_API_PORT:-5000}:8080"
     volumes:
       - ./docker-data/api-logs:/app/logs
+      - ./docker-data/awface-storage:/app/storage
 
   awface-front:
     build:

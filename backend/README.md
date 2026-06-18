@@ -40,7 +40,22 @@ backend/AWFace.Api/logs/awface-api-YYYYMMDD.log
 
 O nível mínimo e o diretório podem ser alterados em `backend/AWFace.Api/appsettings.json`, na seção `Logging:File`.
 
-## Endpoints principais
+## Endpoints
+
+A referência dos endpoints públicos para aplicações Host está em:
+
+```text
+docs/awface-host-api.md
+```
+
+Endpoints públicos para Host:
+
+- `POST /api/awface/journey-launches`
+- `GET /api/awface/journeys/{journeyId}/result`
+- `GET /api/awface/journeys/{journeyId}/face-image`
+- `GET /api/awface/journeys/{journeyId}/face-image/file`
+
+Endpoints administrativos e internos:
 
 - `POST /api/awface/admin/login`
 - `GET /api/awface/admin/tenants`
@@ -49,6 +64,7 @@ O nível mínimo e o diretório podem ser alterados em `backend/AWFace.Api/appse
 - `POST /api/awface/journeys`
 - `POST /api/awface/journeys/{journeyId}/consent`
 - `POST /api/awface/journeys/{journeyId}/appkey`
+- `GET /api/awface/journeys/{journeyId}/completion`
 - `POST /api/awface/facetec/3d/process-request`
 - `POST /webhookliveness`
 

@@ -32,6 +32,7 @@ builder.Services.AddSingleton<SensitiveDataProtector>();
 builder.Services.AddScoped<AwfaceDb>();
 builder.Services.AddScoped<AwfaceRepository>();
 builder.Services.AddScoped<AwfaceSchemaInitializer>();
+builder.Services.AddSingleton<FaceAssetStorage>();
 builder.Services.AddHttpClient<CertifaceClient>();
 builder.Services.AddHttpClient("TenantCallback");
 builder.Services.AddEndpointsApiExplorer();

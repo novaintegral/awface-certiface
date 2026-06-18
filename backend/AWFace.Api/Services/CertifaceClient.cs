@@ -85,9 +85,14 @@ public sealed class CertifaceClient
 
     public async Task<JsonDocument> GetDocumentResultAsync(string appkey, CancellationToken cancellationToken)
     {
-        using var response = await _httpClient.PostAsJsonAsync(
+        using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["appkey"] = appkey
+        });
+
+        using var response = await _httpClient.PostAsync(
             $"{_options.ResultBaseUrl}/facecaptcha/service/captcha/document/result",
-            new { appkey },
+            content,
             cancellationToken
         );
         await EnsureSuccessOrThrowAsync(response, "document/result", cancellationToken);

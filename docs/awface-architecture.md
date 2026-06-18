@@ -60,16 +60,16 @@ Response example:
 
 The backend lives in `backend/AWFace.Api` and runs on .NET 9. It centralizes calls to Postgres, Certiface and tenant callbacks so browser code no longer needs provider credentials or database access.
 
-- `POST /api/awface/journeys`
+Public Host integration endpoints are documented in [`awface-host-api.md`](./awface-host-api.md).
+
+Main Host-facing endpoints:
+
 - `POST /api/awface/journey-launches`
-- `POST /api/awface/journey-launches/{launchToken}/consume`
-- `POST /api/awface/journeys/{journeyId}/consent`
-- `POST /api/awface/journeys/{journeyId}/appkey`
-- `POST /api/awface/facetec/3d/process-request`
-- `GET /api/awface/admin/tenants`
-- `POST /api/awface/admin/tenants`
-- `PATCH /api/awface/admin/tenants/{tenantId}/status`
-- `POST /webhookliveness`
+- `GET /api/awface/journeys/{journeyId}/result`
+- `GET /api/awface/journeys/{journeyId}/face-image`
+- Tenant `UrlCallback`, called by AWFace after successful liveness completion.
+
+Internal browser/SDK/admin endpoints are intentionally not part of the Host contract.
 
 The Angular service uses these endpoints first and still falls back to localStorage for local development when the backend is not available.
 
@@ -82,9 +82,10 @@ Based on the Certiface API Global documentation:
 3. Start FaceTec V10 using the existing SDK assets.
 4. Process 3D SDK requests through AWFace with `POST /api/awface/facetec/3d/process-request`, which proxies Certiface `POST /facecaptcha/service/captcha/3d/process-request`.
 5. Receive provider completion webhook at AWFace.
-6. Query final result with `POST /facecaptcha/service/captcha/document/result`.
+6. Query final result with `POST /facecaptcha/service/captcha/document/result` using `application/x-www-form-urlencoded` and body param `appkey`.
 7. Store the final result in Postgres.
-8. Forward a signed notification to the tenant `UrlCallback` using `SecureCallback`.
+8. Extract `fotos.facecaptcha.frontal`, save the face image encrypted with AES-256-GCM in AWFace persistent filesystem storage, and store only the asset metadata in Postgres.
+9. Forward a signed notification to the tenant `UrlCallback` using `SecureCallback`.
 
 ## Admin
 

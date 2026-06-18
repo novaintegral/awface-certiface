@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Net.Http.Json;
 using AWFace.Api.Data;
 using AWFace.Api.Domain;
@@ -75,12 +76,14 @@ public static class FacetecEndpoints
         }
 
         var responseBody = response.Body;
-        _ = Task.Run(() => FinalizeJourneyAndSendCallbackAsync(appkey, responseBody, scopeFactory, loggerFactory));
+        var deviceLocationJson = ExtractDeviceLocationJson(requestPayload);
+        _ = Task.Run(() => FinalizeJourneyAndSendCallbackAsync(appkey, responseBody, deviceLocationJson, scopeFactory, loggerFactory));
     }
 
     private static async Task FinalizeJourneyAndSendCallbackAsync(
         string appkey,
         string processRequestBody,
+        string? deviceLocationJson,
         IServiceScopeFactory scopeFactory,
         ILoggerFactory loggerFactory)
     {
@@ -90,6 +93,8 @@ public static class FacetecEndpoints
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var repository = scope.ServiceProvider.GetRequiredService<AwfaceRepository>();
+            var certiface = scope.ServiceProvider.GetRequiredService<CertifaceClient>();
+            var faceStorage = scope.ServiceProvider.GetRequiredService<FaceAssetStorage>();
 
             var journey = await repository.GetJourneyByAppkeyAsync(appkey, CancellationToken.None);
             if (journey is null)
@@ -106,8 +111,12 @@ public static class FacetecEndpoints
 
             using var resultDocument = JsonDocument.Parse(processRequestBody);
             var result = resultDocument.RootElement.Clone();
+            var callbackResult = CreateCallbackResult(result);
+            var deviceLocation = string.IsNullOrWhiteSpace(deviceLocationJson) ? null : JsonNode.Parse(deviceLocationJson);
 
-            await repository.MarkJourneyCompletedAsync(journey.Id, resultDocument, CancellationToken.None);
+            using var certifaceResultDocument = await certiface.GetDocumentResultAsync(appkey, CancellationToken.None);
+            await repository.MarkJourneyCompletedAsync(journey.Id, certifaceResultDocument, deviceLocationJson, CancellationToken.None);
+            await StoreFrontalFaceIfPresentAsync(journey, certifaceResultDocument.RootElement, repository, faceStorage, logger, CancellationToken.None);
 
             var callbackPayload = new
             {
@@ -116,7 +125,8 @@ public static class FacetecEndpoints
                 journeyId = journey.Id,
                 tenantId = journey.Tenant.Id,
                 idExternoCliente = journey.Subject.ExternalClientId,
-                result
+                deviceLocation,
+                result = callbackResult
             };
             var callbackPayloadJson = JsonSerializer.Serialize(callbackPayload);
 
@@ -184,5 +194,53 @@ public static class FacetecEndpoints
         {
             logger.LogError(exception, "Falha inesperada ao finalizar jornada e enviar UrlCallback.");
         }
+    }
+
+    private static async Task StoreFrontalFaceIfPresentAsync(
+        JourneySession journey,
+        JsonElement certifaceResult,
+        AwfaceRepository repository,
+        FaceAssetStorage faceStorage,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var frontalFaceBase64 = CertifaceResultParser.ExtractFrontalFaceBase64(certifaceResult);
+        if (string.IsNullOrWhiteSpace(frontalFaceBase64))
+        {
+            logger.LogWarning("Resultado Certiface da jornada {JourneyId} não contém fotos.facecaptcha.frontal.", journey.Id);
+            return;
+        }
+
+        try
+        {
+            var asset = await faceStorage.SaveFrontalFaceAsync(journey.Tenant.Id, journey.Id, frontalFaceBase64, cancellationToken);
+            await repository.UpsertJourneyFaceAssetAsync(journey.Id, journey.Tenant.Id, "FRONTAL", asset, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Falha ao armazenar face frontal da jornada {JourneyId}.", journey.Id);
+        }
+    }
+
+    private static string? ExtractDeviceLocationJson(JsonElement requestPayload)
+    {
+        if (!requestPayload.TryGetProperty("deviceLocation", out var deviceLocation)
+            || deviceLocation.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        return deviceLocation.GetRawText();
+    }
+
+    private static JsonNode? CreateCallbackResult(JsonElement result)
+    {
+        var resultNode = JsonNode.Parse(result.GetRawText());
+        if (resultNode is JsonObject resultObject)
+        {
+            resultObject.Remove("responseBlob");
+        }
+
+        return resultNode;
     }
 }

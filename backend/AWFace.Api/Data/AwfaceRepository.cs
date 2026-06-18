@@ -374,32 +374,39 @@ public sealed class AwfaceRepository
         return value is string appkey ? appkey : null;
     }
 
-    public async Task MarkJourneyCompletedAsync(Guid journeyId, JsonDocument result, CancellationToken cancellationToken)
+    public async Task MarkJourneyCompletedAsync(Guid journeyId, JsonDocument result, string? deviceLocationJson, CancellationToken cancellationToken)
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var location = ParseDeviceLocation(deviceLocationJson);
 
         await using (var resultCommand = connection.CreateCommand())
         {
             resultCommand.Transaction = transaction;
             resultCommand.CommandText = """
                 insert into awface_liveness_result (
-                    journey_id, provider_status, id_externo_cliente, certiface_payload,
-                    facecaptcha_payload, photos_payload, raw_payload, created_at
+                    journey_id, provider_status, id_externo_cliente, bureau_payload,
+                    liveness_payload,
+                    location_latitude, location_longitude, location_accuracy, location_captured_at,
+                    created_at
                 )
                 values (
-                    @journey_id, @provider_status, @id_externo_cliente, cast(@certiface_payload as jsonb),
-                    cast(@facecaptcha_payload as jsonb), cast(@photos_payload as jsonb), cast(@raw_payload as jsonb), now()
+                    @journey_id, @provider_status, @id_externo_cliente, cast(@bureau_payload as jsonb),
+                    cast(@liveness_payload as jsonb),
+                    @location_latitude, @location_longitude, @location_accuracy, @location_captured_at,
+                    now()
                 )
                 """;
             var root = result.RootElement;
             resultCommand.Parameters.AddWithValue("journey_id", journeyId);
             resultCommand.Parameters.AddWithValue("provider_status", root.TryGetProperty("status", out var status) ? status.GetString() ?? "Completo" : "Completo");
             resultCommand.Parameters.AddWithValue("id_externo_cliente", root.TryGetProperty("idExternoCliente", out var externalId) ? externalId.GetString() ?? (object)DBNull.Value : DBNull.Value);
-            AddJsonParameter(resultCommand, "certiface_payload", root, "certifaceID");
-            AddJsonParameter(resultCommand, "facecaptcha_payload", root, "facecaptcha");
-            AddJsonParameter(resultCommand, "photos_payload", root, "fotos");
-            resultCommand.Parameters.AddWithValue("raw_payload", NpgsqlDbType.Jsonb, result.RootElement.GetRawText());
+            AddJsonParameter(resultCommand, "bureau_payload", root, "certifaceID");
+            AddJsonParameter(resultCommand, "liveness_payload", root, "facecaptcha");
+            resultCommand.Parameters.AddWithValue("location_latitude", (object?)location?.Latitude ?? DBNull.Value);
+            resultCommand.Parameters.AddWithValue("location_longitude", (object?)location?.Longitude ?? DBNull.Value);
+            resultCommand.Parameters.AddWithValue("location_accuracy", (object?)location?.Accuracy ?? DBNull.Value);
+            resultCommand.Parameters.AddWithValue("location_captured_at", (object?)location?.CapturedAt ?? DBNull.Value);
             await resultCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -418,6 +425,73 @@ public sealed class AwfaceRepository
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task UpsertJourneyFaceAssetAsync(
+        Guid journeyId,
+        Guid tenantId,
+        string assetType,
+        StoredFaceAsset asset,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into awface_liveness_face_asset (
+                journey_id, tenant_id, asset_type, storage_key, content_type, sha256, size_bytes, encryption_algorithm, created_at
+            )
+            values (
+                @journey_id, @tenant_id, @asset_type, @storage_key, @content_type, @sha256, @size_bytes, @encryption_algorithm, now()
+            )
+            on conflict (journey_id, asset_type) do update
+            set storage_key = excluded.storage_key,
+                content_type = excluded.content_type,
+                sha256 = excluded.sha256,
+                size_bytes = excluded.size_bytes,
+                encryption_algorithm = excluded.encryption_algorithm,
+                created_at = now()
+            """;
+        command.Parameters.AddWithValue("journey_id", journeyId);
+        command.Parameters.AddWithValue("tenant_id", tenantId);
+        command.Parameters.AddWithValue("asset_type", assetType);
+        command.Parameters.AddWithValue("storage_key", asset.StorageKey);
+        command.Parameters.AddWithValue("content_type", asset.ContentType);
+        command.Parameters.AddWithValue("sha256", asset.Sha256);
+        command.Parameters.AddWithValue("size_bytes", asset.SizeBytes);
+        command.Parameters.AddWithValue("encryption_algorithm", asset.EncryptionAlgorithm);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<JourneyFaceAsset?> GetJourneyFaceAssetAsync(Guid journeyId, string assetType, CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select journey_id, asset_type, storage_key, content_type, sha256, size_bytes, encryption_algorithm, created_at
+            from awface_liveness_face_asset
+            where journey_id = @journey_id
+              and asset_type = @asset_type
+            limit 1
+            """;
+        command.Parameters.AddWithValue("journey_id", journeyId);
+        command.Parameters.AddWithValue("asset_type", assetType);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new JourneyFaceAsset(
+            reader.GetGuid(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetInt64(5),
+            reader.GetString(6),
+            reader.GetFieldValue<DateTimeOffset>(7)
+        );
     }
 
     public async Task RegisterCallbackDeliveryAsync(Guid journeyId, string targetUrl, object payload, int? responseStatus, string? responseBody, CancellationToken cancellationToken)
@@ -624,6 +698,57 @@ public sealed class AwfaceRepository
 
         command.Parameters.AddWithValue(name, NpgsqlDbType.Jsonb, "{}");
     }
+
+    private static DeviceLocation? ParseDeviceLocation(string? deviceLocationJson)
+    {
+        if (string.IsNullOrWhiteSpace(deviceLocationJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(deviceLocationJson);
+            var root = document.RootElement;
+            if (!TryGetDouble(root, "latitude", out var latitude) || !TryGetDouble(root, "longitude", out var longitude))
+            {
+                return null;
+            }
+
+            TryGetDouble(root, "accuracy", out var accuracy);
+            DateTimeOffset? capturedAt = null;
+            if (root.TryGetProperty("capturedAt", out var capturedAtElement)
+                && capturedAtElement.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(capturedAtElement.GetString(), out var parsedCapturedAt))
+            {
+                capturedAt = parsedCapturedAt;
+            }
+
+            return new DeviceLocation(latitude, longitude, accuracy, capturedAt);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetDouble(JsonElement root, string propertyName, out double value)
+    {
+        value = default;
+        if (!root.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.Number => property.TryGetDouble(out value),
+            JsonValueKind.String => double.TryParse(property.GetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value),
+            _ => false
+        };
+    }
+
+    private sealed record DeviceLocation(double Latitude, double Longitude, double Accuracy, DateTimeOffset? CapturedAt);
 
     private static string NormalizeTheme(string? value)
     {
