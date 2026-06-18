@@ -82,6 +82,18 @@ docker/postgres/initdb/01-awface-schema.sql
 
 Esse script cria tipos, tabelas e índices necessários. O script só roda automaticamente quando o volume de dados do Postgres ainda está vazio.
 
+Em bancos já existentes, a `AWFace.Api` aplica migrations versionadas durante a inicialização e registra cada execução em:
+
+```text
+awface_schema_migration
+```
+
+Os scripts versionados também ficam disponíveis para auditoria ou execução manual em:
+
+```text
+docker/postgres/migrations
+```
+
 ## Parar ambiente
 
 ```bash

@@ -23,6 +23,7 @@ export class AdminTenantsComponent implements OnInit {
   tenants: AwfaceTenant[] = [];
   selectedTenant: AwfaceTenant = this.createBlankTenant();
   message = '';
+  activeTab: 'identity' | 'appearance' | 'webhook' | 'oauth' | 'credentials' = 'identity';
 
   constructor(
     private awfaceService: AwfaceService,
@@ -50,11 +51,13 @@ export class AdminTenantsComponent implements OnInit {
   selectTenant(tenant: AwfaceTenant): void {
     this.message = '';
     this.selectedTenant = this.cloneTenant(tenant);
+    this.activeTab = 'identity';
   }
 
   newTenant(): void {
     this.message = '';
     this.selectedTenant = this.createBlankTenant();
+    this.activeTab = 'identity';
   }
 
   saveTenant(): void {
@@ -184,6 +187,10 @@ export class AdminTenantsComponent implements OnInit {
       secondaryColor: '#315f88',
       callbackUrl: '',
       secureCallbackToken: '',
+      callbackOAuthEnabled: false,
+      callbackOAuthTokenUrl: '',
+      callbackOAuthClientId: '',
+      callbackOAuthClientSecret: '',
       credentials: [],
       createdAt: now,
       updatedAt: now,

@@ -19,7 +19,11 @@ public sealed class AwfaceSchemaInitializer
             alter table awface_tenant
                 add column if not exists theme text not null default 'LIGHT',
                 add column if not exists primary_color text not null default '#007060',
-                add column if not exists secondary_color text not null default '#315f88';
+                add column if not exists secondary_color text not null default '#315f88',
+                add column if not exists callback_oauth_enabled boolean not null default false,
+                add column if not exists callback_oauth_token_url text,
+                add column if not exists callback_oauth_client_id text,
+                add column if not exists callback_oauth_client_secret_ciphertext text;
 
             alter table awface_liveness_journey
                 add column if not exists appkey_created_at timestamptz,
@@ -99,9 +103,69 @@ public sealed class AwfaceSchemaInitializer
             create index if not exists ix_awface_liveness_journey_launch_expires_at
                 on awface_liveness_journey (launch_expires_at)
                 where launch_token_hash is not null;
+
+            create table if not exists awface_schema_migration (
+                id text primary key,
+                description text not null,
+                applied_at timestamptz not null default now()
+            );
             """;
 
         await command.ExecuteNonQueryAsync(cancellationToken);
-        _logger.LogInformation("Schema AWFace verificado para jornada autônoma.");
+        await ApplyMigrationAsync(
+            connection,
+            "202606180001_tenant_callback_oauth",
+            "Adiciona autenticação OAuth2 ao webhook do tenant.",
+            """
+            alter table awface_tenant
+                add column if not exists callback_oauth_enabled boolean not null default false,
+                add column if not exists callback_oauth_token_url text,
+                add column if not exists callback_oauth_client_id text,
+                add column if not exists callback_oauth_client_secret_ciphertext text;
+            """,
+            cancellationToken
+        );
+
+        _logger.LogInformation("Schema AWFace verificado e migrations aplicadas.");
+    }
+
+    private async Task ApplyMigrationAsync(
+        Npgsql.NpgsqlConnection connection,
+        string id,
+        string description,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var existsCommand = connection.CreateCommand();
+        existsCommand.CommandText = "select exists(select 1 from awface_schema_migration where id = @id)";
+        existsCommand.Parameters.AddWithValue("id", id);
+        var alreadyApplied = (bool)(await existsCommand.ExecuteScalarAsync(cancellationToken) ?? false);
+        if (alreadyApplied)
+        {
+            return;
+        }
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var migrationCommand = connection.CreateCommand())
+        {
+            migrationCommand.Transaction = transaction;
+            migrationCommand.CommandText = sql;
+            await migrationCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var registerCommand = connection.CreateCommand())
+        {
+            registerCommand.Transaction = transaction;
+            registerCommand.CommandText = """
+                insert into awface_schema_migration (id, description)
+                values (@id, @description)
+                """;
+            registerCommand.Parameters.AddWithValue("id", id);
+            registerCommand.Parameters.AddWithValue("description", description);
+            await registerCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        _logger.LogInformation("Migration AWFace aplicada: {MigrationId} - {Description}", id, description);
     }
 }

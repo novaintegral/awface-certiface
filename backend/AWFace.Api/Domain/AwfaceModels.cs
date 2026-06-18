@@ -51,6 +51,10 @@ public sealed record Tenant(
     string SecondaryColor,
     string CallbackUrl,
     string SecureCallbackToken,
+    bool CallbackOAuthEnabled,
+    string? CallbackOAuthTokenUrl,
+    string? CallbackOAuthClientId,
+    string? CallbackOAuthClientSecret,
     IReadOnlyList<TenantCredential> Credentials,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt

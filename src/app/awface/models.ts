@@ -25,6 +25,10 @@ export interface AwfaceTenant {
   secondaryColor: string;
   callbackUrl: string;
   secureCallbackToken: string;
+  callbackOAuthEnabled: boolean;
+  callbackOAuthTokenUrl?: string;
+  callbackOAuthClientId?: string;
+  callbackOAuthClientSecret?: string;
   credentials: AwfaceLivenessCredential[];
   createdAt: string;
   updatedAt: string;

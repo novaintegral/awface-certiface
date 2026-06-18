@@ -30,98 +30,154 @@
       <div class="editor-title">
         <div>
           <h2>{{ selectedTenant.id ? 'Editar tenant' : 'Novo tenant' }}</h2>
-          <p>Configure a identidade visual, callbacks e credenciais Certiface por tipo de jornada.</p>
+          <p>Configure identidade visual, callbacks, segurança e credenciais por tipo de jornada.</p>
         </div>
         <span class="status-pill">{{ statusLabel(selectedTenant.status) }}</span>
       </div>
 
-      <div class="form-grid">
-        <label>
-          Nome do tenant
-          <input name="name" [(ngModel)]="selectedTenant.name" required />
-        </label>
+      <nav class="tenant-tabs" aria-label="Parâmetros do tenant">
+        <button type="button" [class.active]="activeTab === 'identity'" (click)="activeTab = 'identity'">Identificação</button>
+        <button type="button" [class.active]="activeTab === 'appearance'" (click)="activeTab = 'appearance'">Aparência</button>
+        <button type="button" [class.active]="activeTab === 'webhook'" (click)="activeTab = 'webhook'">Webhook</button>
+        <button type="button" [class.active]="activeTab === 'oauth'" (click)="activeTab = 'oauth'">OAuth2</button>
+        <button type="button" [class.active]="activeTab === 'credentials'" (click)="activeTab = 'credentials'">Jornadas</button>
+      </nav>
 
-        <label>
-          Token de integração
-          <span class="token-field">
-            <input name="integrationToken" [(ngModel)]="selectedTenant.integrationToken" autocomplete="off" />
-            <button
-              type="button"
-              class="icon-button token-action"
-              aria-label="Regenerar token de integração"
-              title="Regenerar token de integração"
-              (click)="regenerateIntegrationToken()"
-            >
-              ↻
-            </button>
-            <button
-              type="button"
-              class="icon-button token-action"
-              aria-label="Copiar token de integração"
-              title="Copiar token de integração"
-              (click)="copyIntegrationToken()"
-            >
-              ⧉
-            </button>
-          </span>
-        </label>
-
-        <label>
-          Termos de uso
-          <input name="termsUrl" [(ngModel)]="selectedTenant.termsUrl" type="url" />
-        </label>
-
-        <label>
-          Política de privacidade
-          <input name="privacyUrl" [(ngModel)]="selectedTenant.privacyUrl" type="url" />
-        </label>
-
-        <label>
-          Tema da jornada
-          <select name="theme" [(ngModel)]="selectedTenant.theme">
-            <option value="LIGHT">Claro</option>
-            <option value="DARK">Escuro</option>
-          </select>
-        </label>
-
-        <label>
-          Cor principal
-          <span class="color-field">
-            <input name="primaryColorPicker" [(ngModel)]="selectedTenant.primaryColor" type="color" />
-            <input name="primaryColor" [(ngModel)]="selectedTenant.primaryColor" autocomplete="off" />
-          </span>
-        </label>
-
-        <label>
-          Cor secundária
-          <span class="color-field">
-            <input name="secondaryColorPicker" [(ngModel)]="selectedTenant.secondaryColor" type="color" />
-            <input name="secondaryColor" [(ngModel)]="selectedTenant.secondaryColor" autocomplete="off" />
-          </span>
-        </label>
-
-        <label>
-          UrlCallback
-          <input name="callbackUrl" [(ngModel)]="selectedTenant.callbackUrl" type="url" />
-        </label>
-
-        <label>
-          SecureCallback
-          <input name="secureCallbackToken" [(ngModel)]="selectedTenant.secureCallbackToken" autocomplete="off" />
-        </label>
-
-        <label class="full-line">
-          Logotipo do tenant
-          <input name="logoFile" type="file" accept="image/*" (change)="onLogoFileSelected($event)" />
-        </label>
-
-        <div class="logo-preview full-line" *ngIf="selectedTenant.logoBase64">
-          <span>Prévia do logotipo</span>
-          <img [src]="getLogoPreview()" [alt]="selectedTenant.name || 'Logotipo do tenant'" />
+      <section class="form-section" *ngIf="activeTab === 'identity'">
+        <div class="section-title">
+          <h3>Identificação</h3>
+          <p>Dados principais usados pela aplicação host para iniciar jornadas.</p>
         </div>
-      </div>
+        <div class="form-grid">
+          <label>
+            Nome do tenant
+            <input name="name" [(ngModel)]="selectedTenant.name" required />
+          </label>
 
-      <section class="credentials-section">
+          <label>
+            Token de integração
+            <span class="token-field">
+              <input name="integrationToken" [(ngModel)]="selectedTenant.integrationToken" autocomplete="off" />
+              <button
+                type="button"
+                class="icon-button token-action"
+                aria-label="Regenerar token de integração"
+                title="Regenerar token de integração"
+                (click)="regenerateIntegrationToken()"
+              >
+                ↻
+              </button>
+              <button
+                type="button"
+                class="icon-button token-action"
+                aria-label="Copiar token de integração"
+                title="Copiar token de integração"
+                (click)="copyIntegrationToken()"
+              >
+                ⧉
+              </button>
+            </span>
+          </label>
+
+          <label>
+            Termos de uso
+            <input name="termsUrl" [(ngModel)]="selectedTenant.termsUrl" type="url" />
+          </label>
+
+          <label>
+            Política de privacidade
+            <input name="privacyUrl" [(ngModel)]="selectedTenant.privacyUrl" type="url" />
+          </label>
+        </div>
+      </section>
+
+      <section class="form-section" *ngIf="activeTab === 'appearance'">
+        <div class="section-title">
+          <h3>Aparência da jornada</h3>
+          <p>Identidade visual aplicada às telas da prova de vida.</p>
+        </div>
+        <div class="form-grid">
+          <label>
+            Tema da jornada
+            <select name="theme" [(ngModel)]="selectedTenant.theme">
+              <option value="LIGHT">Claro</option>
+              <option value="DARK">Escuro</option>
+            </select>
+          </label>
+
+          <label>
+            Cor principal
+            <span class="color-field">
+              <input name="primaryColorPicker" [(ngModel)]="selectedTenant.primaryColor" type="color" />
+              <input name="primaryColor" [(ngModel)]="selectedTenant.primaryColor" autocomplete="off" />
+            </span>
+          </label>
+
+          <label>
+            Cor secundária
+            <span class="color-field">
+              <input name="secondaryColorPicker" [(ngModel)]="selectedTenant.secondaryColor" type="color" />
+              <input name="secondaryColor" [(ngModel)]="selectedTenant.secondaryColor" autocomplete="off" />
+            </span>
+          </label>
+
+          <label class="full-line">
+            Logotipo do tenant
+            <input name="logoFile" type="file" accept="image/*" (change)="onLogoFileSelected($event)" />
+          </label>
+
+          <div class="logo-preview full-line" *ngIf="selectedTenant.logoBase64">
+            <span>Prévia do logotipo</span>
+            <img [src]="getLogoPreview()" [alt]="selectedTenant.name || 'Logotipo do tenant'" />
+          </div>
+        </div>
+      </section>
+
+      <section class="form-section" *ngIf="activeTab === 'webhook'">
+        <div class="section-title">
+          <h3>Webhook</h3>
+          <p>Endpoint da aplicação host chamado ao final da jornada.</p>
+        </div>
+        <div class="form-grid">
+          <label class="full-line">
+            UrlCallback
+            <input name="callbackUrl" [(ngModel)]="selectedTenant.callbackUrl" type="url" />
+          </label>
+        </div>
+      </section>
+
+      <section class="form-section" *ngIf="activeTab === 'oauth'">
+        <div class="section-title">
+          <h3>Autenticação OAuth2 do Webhook</h3>
+          <p>Quando habilitado, o AWFace obtém um bearer token antes de chamar o UrlCallback.</p>
+        </div>
+        <label class="check-row oauth-toggle">
+          <input
+            name="callbackOAuthEnabled"
+            type="checkbox"
+            [(ngModel)]="selectedTenant.callbackOAuthEnabled"
+          />
+          Habilitar autenticação OAuth2
+        </label>
+        <div class="form-grid" *ngIf="selectedTenant.callbackOAuthEnabled">
+          <label>
+            Token URL
+            <input name="callbackOAuthTokenUrl" [(ngModel)]="selectedTenant.callbackOAuthTokenUrl" type="url" />
+          </label>
+
+          <label>
+            Client ID
+            <input name="callbackOAuthClientId" [(ngModel)]="selectedTenant.callbackOAuthClientId" autocomplete="off" />
+          </label>
+
+          <label>
+            Client Secret
+            <input name="callbackOAuthClientSecret" [(ngModel)]="selectedTenant.callbackOAuthClientSecret" type="password" autocomplete="off" />
+          </label>
+        </div>
+      </section>
+
+      <section class="credentials-section" *ngIf="activeTab === 'credentials'">
         <h3>Jornadas habilitadas</h3>
         <div class="credential-card" *ngFor="let journey of journeyTypes">
           <label class="check-row">

@@ -33,6 +33,7 @@ builder.Services.AddScoped<AwfaceDb>();
 builder.Services.AddScoped<AwfaceRepository>();
 builder.Services.AddScoped<AwfaceSchemaInitializer>();
 builder.Services.AddSingleton<FaceAssetStorage>();
+builder.Services.AddSingleton<TenantWebhookClient>();
 builder.Services.AddHttpClient<CertifaceClient>();
 builder.Services.AddHttpClient("TenantCallback");
 builder.Services.AddEndpointsApiExplorer();

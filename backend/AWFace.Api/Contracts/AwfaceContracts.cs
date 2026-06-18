@@ -24,6 +24,10 @@ public sealed record TenantUpsertRequest(
     string? SecondaryColor,
     string CallbackUrl,
     string SecureCallbackToken,
+    bool CallbackOAuthEnabled,
+    string? CallbackOAuthTokenUrl,
+    string? CallbackOAuthClientId,
+    string? CallbackOAuthClientSecret,
     IReadOnlyList<TenantCredentialDto> Credentials
 );
 

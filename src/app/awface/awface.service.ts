@@ -78,6 +78,7 @@ export class AwfaceService {
       theme: tenant.theme || 'LIGHT',
       primaryColor: this.normalizeColor(tenant.primaryColor, '#007060'),
       secondaryColor: this.normalizeColor(tenant.secondaryColor, '#315f88'),
+      callbackOAuthEnabled: Boolean(tenant.callbackOAuthEnabled),
       createdAt: tenant.createdAt || now,
       updatedAt: now,
     };
@@ -349,6 +350,10 @@ export class AwfaceService {
         secondaryColor: '#315f88',
         callbackUrl: 'https://host.example.com/webhook/awface',
         secureCallbackToken: 'demo-secure-callback-token',
+        callbackOAuthEnabled: false,
+        callbackOAuthTokenUrl: '',
+        callbackOAuthClientId: '',
+        callbackOAuthClientSecret: '',
         credentials: [
           {
             journeyType: 'LIVENESS',
@@ -368,6 +373,10 @@ export class AwfaceService {
       theme: tenant.theme || 'LIGHT',
       primaryColor: this.normalizeColor(tenant.primaryColor, '#007060'),
       secondaryColor: this.normalizeColor(tenant.secondaryColor, '#315f88'),
+      callbackOAuthEnabled: Boolean(tenant.callbackOAuthEnabled),
+      callbackOAuthTokenUrl: tenant.callbackOAuthTokenUrl || '',
+      callbackOAuthClientId: tenant.callbackOAuthClientId || '',
+      callbackOAuthClientSecret: tenant.callbackOAuthClientSecret || '',
     };
   }
 

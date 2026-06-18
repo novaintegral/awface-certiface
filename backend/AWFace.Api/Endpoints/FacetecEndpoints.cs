@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Net.Http.Json;
 using AWFace.Api.Data;
 using AWFace.Api.Domain;
 using AWFace.Api.Services;
@@ -95,6 +94,7 @@ public static class FacetecEndpoints
             var repository = scope.ServiceProvider.GetRequiredService<AwfaceRepository>();
             var certiface = scope.ServiceProvider.GetRequiredService<CertifaceClient>();
             var faceStorage = scope.ServiceProvider.GetRequiredService<FaceAssetStorage>();
+            var webhookClient = scope.ServiceProvider.GetRequiredService<TenantWebhookClient>();
 
             var journey = await repository.GetJourneyByAppkeyAsync(appkey, CancellationToken.None);
             if (journey is null)
@@ -152,20 +152,10 @@ public static class FacetecEndpoints
 
             try
             {
-                var httpClientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
-                using var callbackClient = httpClientFactory.CreateClient("TenantCallback");
-                callbackClient.DefaultRequestHeaders.Remove("X-AWFace-SecureCallback");
-                callbackClient.DefaultRequestHeaders.Add("X-AWFace-SecureCallback", journey.Tenant.SecureCallbackToken);
-
-                using var callbackResponse = await callbackClient.PostAsJsonAsync(
-                    journey.Tenant.CallbackUrl,
-                    callbackPayload,
-                    CancellationToken.None
-                );
-
-                callbackStatus = (int)callbackResponse.StatusCode;
-                callbackResponseBody = await callbackResponse.Content.ReadAsStringAsync(CancellationToken.None);
-                callbackDelivered = callbackResponse.IsSuccessStatusCode;
+                var callbackResponse = await webhookClient.SendAsync(journey.Tenant, callbackPayload, CancellationToken.None);
+                callbackStatus = callbackResponse.StatusCode;
+                callbackResponseBody = callbackResponse.ResponseBody;
+                callbackDelivered = callbackResponse.Delivered;
             }
             catch (Exception exception)
             {

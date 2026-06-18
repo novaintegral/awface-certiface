@@ -265,9 +265,38 @@ a:focus {
   font-weight: 900;
 }
 
+.tenant-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #e7edf3;
+}
+
+.tenant-tabs button {
+  min-height: 38px;
+  border-radius: 6px 6px 0 0;
+  background: #fff;
+  color: #344254;
+}
+
+.tenant-tabs button.active {
+  background: #007060;
+  color: #fff;
+}
+
 .form-grid {
   grid-template-columns: repeat(2, minmax(260px, 1fr));
   column-gap: 14px;
+}
+
+.form-section {
+  padding: 16px 0;
+  border-top: 1px solid #e7edf3;
+}
+
+.section-title {
+  margin-bottom: 12px;
 }
 
 .full-line {

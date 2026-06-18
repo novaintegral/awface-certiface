@@ -35,6 +35,10 @@ CREATE TABLE awface_tenant (
   secondary_color text NOT NULL DEFAULT '#315f88',
   callback_url text NOT NULL,
   secure_callback_token text NOT NULL,
+  callback_oauth_enabled boolean NOT NULL DEFAULT false,
+  callback_oauth_token_url text,
+  callback_oauth_client_id text,
+  callback_oauth_client_secret_ciphertext text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   cancelled_at timestamptz
@@ -132,4 +136,10 @@ CREATE TABLE awface_callback_delivery (
   attempt integer NOT NULL DEFAULT 1,
   delivered_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE awface_schema_migration (
+  id text PRIMARY KEY,
+  description text NOT NULL,
+  applied_at timestamptz NOT NULL DEFAULT now()
 );

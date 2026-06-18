@@ -177,6 +177,14 @@ Header enviado:
 X-AWFace-SecureCallback: <secureCallbackToken-do-tenant>
 ```
 
+Quando a autenticação OAuth2 estiver habilitada no Tenant, o AWFace obtém um `access_token` via client credentials antes de enviar o callback e adiciona:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+A chamada de token é feita com `Content-Type: application/x-www-form-urlencoded` e body `grant_type=client_credentials`, `client_id` e `client_secret`. Quando a resposta contém `expires_in`, o token é mantido em cache e renovado automaticamente após expiração.
+
 Payload:
 
 ```json

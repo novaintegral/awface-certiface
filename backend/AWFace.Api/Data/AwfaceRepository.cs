@@ -28,7 +28,9 @@ public sealed class AwfaceRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             select id, name, integration_token, status::text, terms_url, privacy_url, logo_base64,
-                   theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
+                   theme, primary_color, secondary_color, callback_url, secure_callback_token,
+                   callback_oauth_enabled, callback_oauth_token_url, callback_oauth_client_id, callback_oauth_client_secret_ciphertext,
+                   created_at, updated_at
             from awface_tenant
             order by created_at desc
             """;
@@ -77,11 +79,15 @@ public sealed class AwfaceRepository
             command.CommandText = """
                 insert into awface_tenant (
                     id, name, integration_token, status, terms_url, privacy_url, logo_base64,
-                    theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
+                    theme, primary_color, secondary_color, callback_url, secure_callback_token,
+                    callback_oauth_enabled, callback_oauth_token_url, callback_oauth_client_id, callback_oauth_client_secret_ciphertext,
+                    created_at, updated_at
                 )
                 values (
                     @id, @name, @integration_token, cast(@status as tenant_status), @terms_url, @privacy_url, @logo_base64,
-                    @theme, @primary_color, @secondary_color, @callback_url, @secure_callback_token, now(), now()
+                    @theme, @primary_color, @secondary_color, @callback_url, @secure_callback_token,
+                    @callback_oauth_enabled, @callback_oauth_token_url, @callback_oauth_client_id, @callback_oauth_client_secret_ciphertext,
+                    now(), now()
                 )
                 on conflict (id) do update set
                     name = excluded.name,
@@ -95,6 +101,10 @@ public sealed class AwfaceRepository
                     secondary_color = excluded.secondary_color,
                     callback_url = excluded.callback_url,
                     secure_callback_token = excluded.secure_callback_token,
+                    callback_oauth_enabled = excluded.callback_oauth_enabled,
+                    callback_oauth_token_url = excluded.callback_oauth_token_url,
+                    callback_oauth_client_id = excluded.callback_oauth_client_id,
+                    callback_oauth_client_secret_ciphertext = excluded.callback_oauth_client_secret_ciphertext,
                     updated_at = now()
                 """;
             command.Parameters.AddWithValue("id", tenantId);
@@ -109,6 +119,10 @@ public sealed class AwfaceRepository
             command.Parameters.AddWithValue("secondary_color", NormalizeColor(request.SecondaryColor, "#315f88"));
             command.Parameters.AddWithValue("callback_url", request.CallbackUrl.Trim());
             command.Parameters.AddWithValue("secure_callback_token", request.SecureCallbackToken.Trim());
+            command.Parameters.AddWithValue("callback_oauth_enabled", request.CallbackOAuthEnabled);
+            command.Parameters.AddWithValue("callback_oauth_token_url", (object?)NormalizeOptional(request.CallbackOAuthTokenUrl) ?? DBNull.Value);
+            command.Parameters.AddWithValue("callback_oauth_client_id", (object?)NormalizeOptional(request.CallbackOAuthClientId) ?? DBNull.Value);
+            command.Parameters.AddWithValue("callback_oauth_client_secret_ciphertext", ProtectOptional(request.CallbackOAuthClientSecret));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -543,7 +557,9 @@ public sealed class AwfaceRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             select id, name, integration_token, status::text, terms_url, privacy_url, logo_base64,
-                   theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
+                   theme, primary_color, secondary_color, callback_url, secure_callback_token,
+                   callback_oauth_enabled, callback_oauth_token_url, callback_oauth_client_id, callback_oauth_client_secret_ciphertext,
+                   created_at, updated_at
             from awface_tenant
             where integration_token = @integration_token
             """;
@@ -564,7 +580,9 @@ public sealed class AwfaceRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             select id, name, integration_token, status::text, terms_url, privacy_url, logo_base64,
-                   theme, primary_color, secondary_color, callback_url, secure_callback_token, created_at, updated_at
+                   theme, primary_color, secondary_color, callback_url, secure_callback_token,
+                   callback_oauth_enabled, callback_oauth_token_url, callback_oauth_client_id, callback_oauth_client_secret_ciphertext,
+                   created_at, updated_at
             from awface_tenant
             where id = @id
             """;
@@ -643,9 +661,13 @@ public sealed class AwfaceRepository
             reader.GetString(9),
             reader.GetString(10),
             reader.GetString(11),
+            reader.GetBoolean(12),
+            reader.IsDBNull(13) ? null : reader.GetString(13),
+            reader.IsDBNull(14) ? null : reader.GetString(14),
+            reader.IsDBNull(15) ? null : _protector.Unprotect(reader.GetString(15)),
             credentials,
-            reader.GetFieldValue<DateTimeOffset>(12),
-            reader.GetFieldValue<DateTimeOffset>(13)
+            reader.GetFieldValue<DateTimeOffset>(16),
+            reader.GetFieldValue<DateTimeOffset>(17)
         );
     }
 
@@ -664,9 +686,13 @@ public sealed class AwfaceRepository
             reader.GetString(19),
             reader.GetString(20),
             reader.GetString(21),
+            reader.GetBoolean(22),
+            reader.IsDBNull(23) ? null : reader.GetString(23),
+            reader.IsDBNull(24) ? null : reader.GetString(24),
+            reader.IsDBNull(25) ? null : _protector.Unprotect(reader.GetString(25)),
             credentials,
-            reader.GetFieldValue<DateTimeOffset>(22),
-            reader.GetFieldValue<DateTimeOffset>(23)
+            reader.GetFieldValue<DateTimeOffset>(26),
+            reader.GetFieldValue<DateTimeOffset>(27)
         );
 
         return new JourneySession(
@@ -762,11 +788,25 @@ public sealed class AwfaceRepository
         return string.IsNullOrWhiteSpace(color) ? fallback : color;
     }
 
+    private static string? NormalizeOptional(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private object ProtectOptional(string? value)
+    {
+        var normalized = NormalizeOptional(value);
+        return normalized is null ? DBNull.Value : _protector.Protect(normalized);
+    }
+
     private const string JourneySelectSql = """
         select j.id, j.journey_type::text, j.cpf_ciphertext, j.full_name_ciphertext, j.birth_date_ciphertext,
                j.external_client_id, j.status::text, j.appkey, j.created_at, j.updated_at,
                t.id, t.name, t.integration_token, t.status::text, t.terms_url, t.privacy_url, t.logo_base64,
-               t.theme, t.primary_color, t.secondary_color, t.callback_url, t.secure_callback_token, t.created_at, t.updated_at
+               t.theme, t.primary_color, t.secondary_color, t.callback_url, t.secure_callback_token,
+               t.callback_oauth_enabled, t.callback_oauth_token_url, t.callback_oauth_client_id, t.callback_oauth_client_secret_ciphertext,
+               t.created_at, t.updated_at
         from awface_liveness_journey j
         join awface_tenant t on t.id = j.tenant_id
         """;
