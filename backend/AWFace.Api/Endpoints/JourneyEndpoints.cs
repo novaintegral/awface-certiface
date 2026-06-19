@@ -148,6 +148,26 @@ public static class JourneyEndpoints
             });
         });
 
+        group.MapGet("/{journeyId:guid}/tenant-logo", async (
+            Guid journeyId,
+            AwfaceRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
+            if (journey is null)
+            {
+                return Results.NotFound();
+            }
+
+            var logo = ParseImageBase64(journey.Tenant.LogoBase64);
+            if (logo is null)
+            {
+                return Results.NotFound();
+            }
+
+            return Results.File(logo.Value.Bytes, logo.Value.ContentType);
+        });
+
         group.MapGet("/{journeyId:guid}/result", async (
             Guid journeyId,
             HttpContext httpContext,
@@ -309,5 +329,41 @@ public static class JourneyEndpoints
         return null;
     }
 
+    private static ParsedImage? ParseImageBase64(string? value)
+    {
+        var logo = value?.Trim();
+        if (string.IsNullOrWhiteSpace(logo))
+        {
+            return null;
+        }
+
+        var contentType = "image/png";
+        var base64 = logo;
+        const string dataPrefix = "data:";
+        if (logo.StartsWith(dataPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var commaIndex = logo.IndexOf(',');
+            if (commaIndex < 0)
+            {
+                return null;
+            }
+
+            var metadata = logo[dataPrefix.Length..commaIndex];
+            var semicolonIndex = metadata.IndexOf(';');
+            contentType = semicolonIndex > 0 ? metadata[..semicolonIndex] : metadata;
+            base64 = logo[(commaIndex + 1)..];
+        }
+
+        try
+        {
+            return new ParsedImage(Convert.FromBase64String(base64), contentType);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
     private sealed record HostJourneyAuthorization(JourneySession? Journey, IResult? Result);
+    private readonly record struct ParsedImage(byte[] Bytes, string ContentType);
 }

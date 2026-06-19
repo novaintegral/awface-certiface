@@ -15,20 +15,40 @@ import {
 } from './models';
 import { onlyDigits, validateJourneyStart } from './awface-validators';
 
-const TENANTS_KEY = 'awface.tenants';
-const SESSIONS_KEY = 'awface.sessions';
 const ADMIN_SESSION_KEY = 'awface.admin.session';
 const ACTIVE_SESSION_KEY = 'awface.activeJourneySessionId';
 const ACTIVE_SESSION_SOURCE_KEY = 'awface.activeJourneySource';
 const COMPLETION_KEY = 'awface.completion';
+const APPKEY_KEY = 'appkey';
+const TENANT_LOGO_URL_KEY = 'awface.tenantLogoUrl';
+const JOURNEY_SUBJECT_NAME_KEY = 'awface.journeySubjectName';
+const JOURNEY_TYPE_KEY = 'awface.journeyType';
+const LEGACY_LOCAL_STORAGE_KEYS = [
+  'awface.sessions',
+  'awface.tenants',
+  'awface.deviceLocation',
+  'awface.completion',
+  'awface.activeJourneySessionId',
+  'awface.activeJourneySource',
+  'awface.admin.session',
+  'hasLiveness',
+];
+
+interface AwfaceRuntimeState {
+  appkey?: string;
+  deviceLocation?: unknown;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AwfaceService {
   private readonly apiBaseUrl = environment.awfaceApiUrl || '';
   private readonly adminUser = environment.awfaceAdminUser;
+  private activeSession: AwfaceJourneySession | null = null;
+  private runtimeState: AwfaceRuntimeState = {};
 
   constructor(private http: HttpClient) {
-    this.ensureSeedTenant();
+    this.clearLegacySensitiveLocalStorage();
+    (window as any).__awfaceRuntime = this.runtimeState;
   }
 
   loginAdmin(credentials: AwfaceAdminCredentials): boolean {
@@ -36,7 +56,7 @@ export class AwfaceService {
       credentials.email === this.adminUser.email && credentials.password === this.adminUser.password;
 
     if (authenticated) {
-      localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ email: credentials.email, loggedAt: new Date().toISOString() }));
+      sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ loggedAt: new Date().toISOString() }));
     }
 
     return authenticated;
@@ -47,7 +67,7 @@ export class AwfaceService {
       map(response => response.authenticated),
       tap(authenticated => {
         if (authenticated) {
-          localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ email: credentials.email, loggedAt: new Date().toISOString() }));
+          sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ loggedAt: new Date().toISOString() }));
         }
       }),
       catchError(() => of(this.loginAdmin(credentials)))
@@ -56,16 +76,16 @@ export class AwfaceService {
 
   logoutAdmin(): void {
     localStorage.removeItem(ADMIN_SESSION_KEY);
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
   }
 
   isAdminAuthenticated(): boolean {
-    return Boolean(localStorage.getItem(ADMIN_SESSION_KEY));
+    return Boolean(sessionStorage.getItem(ADMIN_SESSION_KEY));
   }
 
   listTenants(): Observable<AwfaceTenant[]> {
     return this.http.get<AwfaceTenant[]>(`${this.apiBaseUrl}/api/awface/admin/tenants`).pipe(
-      map(tenants => tenants.map(tenant => this.withTenantDefaults(tenant))),
-      catchError(() => of(this.getLocalTenants()))
+      map(tenants => tenants.map(tenant => this.withTenantDefaults(tenant)))
     );
   }
 
@@ -83,32 +103,11 @@ export class AwfaceService {
       updatedAt: now,
     };
 
-    return this.http.post<AwfaceTenant>(`${this.apiBaseUrl}/api/awface/admin/tenants`, normalized).pipe(
-      catchError(() => {
-        const tenants = this.getLocalTenants();
-        const nextTenants = tenants.some(item => item.id === normalized.id)
-          ? tenants.map(item => (item.id === normalized.id ? normalized : item))
-          : [normalized, ...tenants];
-        this.setLocalTenants(nextTenants);
-        return of(normalized);
-      })
-    );
+    return this.http.post<AwfaceTenant>(`${this.apiBaseUrl}/api/awface/admin/tenants`, normalized);
   }
 
   updateTenantStatus(tenantId: string, status: AwfaceTenant['status']): Observable<AwfaceTenant> {
-    return this.http.patch<AwfaceTenant>(`${this.apiBaseUrl}/api/awface/admin/tenants/${tenantId}/status`, { status }).pipe(
-      catchError(() => {
-        const tenants = this.getLocalTenants();
-        const tenant = tenants.find(item => item.id === tenantId);
-        if (!tenant) {
-          return throwError(() => new Error('Tenant não encontrado.'));
-        }
-
-        const updated = { ...tenant, status, updatedAt: new Date().toISOString() };
-        this.setLocalTenants(tenants.map(item => (item.id === tenantId ? updated : item)));
-        return of(updated);
-      })
-    );
+    return this.http.patch<AwfaceTenant>(`${this.apiBaseUrl}/api/awface/admin/tenants/${tenantId}/status`, { status });
   }
 
   startJourney(request: AwfaceJourneyStartRequest): Observable<AwfaceJourneySession> {
@@ -124,54 +123,17 @@ export class AwfaceService {
       externalClientId: request.externalClientId.trim(),
     };
 
-    localStorage.removeItem('appkey');
-    localStorage.removeItem('awface.completion');
-    localStorage.setItem(ACTIVE_SESSION_SOURCE_KEY, 'ASSISTED');
+    this.clearRuntimeState();
+    sessionStorage.setItem(ACTIVE_SESSION_SOURCE_KEY, 'ASSISTED');
 
     return this.http.post<AwfaceJourneySession>(`${this.apiBaseUrl}/api/awface/journeys`, sanitizedRequest).pipe(
-      tap(session => this.persistActiveSession(session)),
-      catchError(() => {
-        const tenant = this.findTenantByToken(sanitizedRequest.integrationToken);
-
-        if (!tenant) {
-          return throwError(() => [{ field: 'integrationToken', message: 'Token de integração não encontrado.' }]);
-        }
-
-        if (tenant.status !== 'ACTIVE') {
-          return throwError(() => [{ field: 'integrationToken', message: 'Tenant bloqueado ou cancelado.' }]);
-        }
-
-        if (!tenant.credentials.some(credential => credential.journeyType === sanitizedRequest.journeyType)) {
-          return throwError(() => [{ field: 'journeyType', message: 'Tipo de jornada não habilitado para este tenant.' }]);
-        }
-
-        const now = new Date().toISOString();
-        const session: AwfaceJourneySession = {
-          id: crypto.randomUUID(),
-          tenant,
-          journeyType: sanitizedRequest.journeyType,
-          subject: {
-            cpf: sanitizedRequest.cpf,
-            fullName: sanitizedRequest.fullName,
-            birthDate: sanitizedRequest.birthDate,
-            externalClientId: sanitizedRequest.externalClientId,
-          },
-          status: 'CREATED',
-          createdAt: now,
-          updatedAt: now,
-        };
-
-        this.saveLocalSession(session);
-        this.persistActiveSession(session);
-        return of(session);
-      })
+      tap(session => this.persistActiveSession(session))
     );
   }
 
   consumeJourneyLaunch(launchToken: string): Observable<AwfaceJourneySession> {
-    localStorage.removeItem('appkey');
-    localStorage.removeItem(COMPLETION_KEY);
-    localStorage.setItem(ACTIVE_SESSION_SOURCE_KEY, 'AUTONOMOUS');
+    this.clearRuntimeState();
+    sessionStorage.setItem(ACTIVE_SESSION_SOURCE_KEY, 'AUTONOMOUS');
 
     return this.http.post<AwfaceJourneyLaunchResolveResponse>(
       `${this.apiBaseUrl}/api/awface/journey-launches/${encodeURIComponent(launchToken)}/consume`,
@@ -183,41 +145,31 @@ export class AwfaceService {
   }
 
   getActiveSession(): AwfaceJourneySession | null {
-    const sessionId = localStorage.getItem(ACTIVE_SESSION_KEY);
-    if (!sessionId) {
-      return null;
-    }
-
-    return this.getLocalSessions().find(session => session.id === sessionId) || null;
+    return this.activeSession;
   }
 
   getActiveJourneySource(): 'ASSISTED' | 'AUTONOMOUS' {
-    return localStorage.getItem(ACTIVE_SESSION_SOURCE_KEY) === 'AUTONOMOUS' ? 'AUTONOMOUS' : 'ASSISTED';
+    return sessionStorage.getItem(ACTIVE_SESSION_SOURCE_KEY) === 'AUTONOMOUS' ? 'AUTONOMOUS' : 'ASSISTED';
+  }
+
+  getActiveJourneyId(): string | null {
+    return sessionStorage.getItem(ACTIVE_SESSION_KEY);
+  }
+
+  getActiveJourneySubjectName(): string | null {
+    return localStorage.getItem(JOURNEY_SUBJECT_NAME_KEY);
+  }
+
+  getActiveJourneyType(): AwfaceJourneyType | null {
+    const journeyType = localStorage.getItem(JOURNEY_TYPE_KEY);
+    return journeyType && journeyType in AWFACE_JOURNEY_LABELS ? journeyType as AwfaceJourneyType : null;
   }
 
   registerConsent(sessionId: string, decision: AwfaceConsentDecision): Observable<AwfaceJourneySession> {
     const endpoint = `${this.apiBaseUrl}/api/awface/journeys/${sessionId}/consent`;
 
     return this.http.post<AwfaceJourneySession>(endpoint, { decision }).pipe(
-      tap(session => this.persistActiveSession(session)),
-      catchError(() => {
-        const session = this.getLocalSessions().find(item => item.id === sessionId);
-        if (!session) {
-          return throwError(() => new Error('Jornada não encontrada.'));
-        }
-
-        const now = new Date().toISOString();
-        const updated: AwfaceJourneySession = {
-          ...session,
-          status: decision === 'ACCEPTED' ? 'CONSENT_ACCEPTED' : 'CONSENT_REFUSED',
-          consentAt: decision === 'ACCEPTED' ? now : session.consentAt,
-          refusalAt: decision === 'REFUSED' ? now : session.refusalAt,
-          updatedAt: now,
-        };
-        this.saveLocalSession(updated);
-        this.persistActiveSession(updated);
-        return of(updated);
-      })
+      tap(session => this.persistActiveSession(session))
     );
   }
 
@@ -236,11 +188,11 @@ export class AwfaceService {
   }
 
   saveCompletionResult(result: AwfaceCompletionResult): void {
-    localStorage.setItem(COMPLETION_KEY, JSON.stringify(result));
+    sessionStorage.setItem(COMPLETION_KEY, JSON.stringify(result));
   }
 
   getCompletionResult(): AwfaceCompletionResult | null {
-    const value = localStorage.getItem(COMPLETION_KEY);
+    const value = sessionStorage.getItem(COMPLETION_KEY);
     return value ? JSON.parse(value) : null;
   }
 
@@ -261,6 +213,14 @@ export class AwfaceService {
     return `data:image/png;base64,${logo.replace(/\s/g, '')}`;
   }
 
+  getJourneyLogoSource(session?: AwfaceJourneySession | null, fallback = '/assets/img/logo_certiface_trans.png'): string {
+    if (session?.id) {
+      return this.createJourneyLogoUrl(session.id);
+    }
+
+    return localStorage.getItem(TENANT_LOGO_URL_KEY) || this.getLogoSource(session?.tenant.logoBase64, fallback);
+  }
+
   getTenantThemeStyle(tenant?: AwfaceTenant | null): Record<string, string> {
     const primary = this.normalizeColor(tenant?.primaryColor, '#007060');
     const secondary = this.normalizeColor(tenant?.secondaryColor, '#315f88');
@@ -279,92 +239,68 @@ export class AwfaceService {
     };
   }
 
-  private markSessionAppkey(sessionId: string, appkey: string): void {
-    localStorage.setItem('appkey', appkey);
+  getRuntimeAppkey(): string | undefined {
+    return this.runtimeState.appkey || localStorage.getItem(APPKEY_KEY) || undefined;
+  }
 
-    const session = this.getLocalSessions().find(item => item.id === sessionId);
-    if (!session) {
+  getRuntimeDeviceLocation(): unknown {
+    return this.runtimeState.deviceLocation;
+  }
+
+  setRuntimeDeviceLocation(deviceLocation: unknown): void {
+    this.runtimeState.deviceLocation = deviceLocation;
+    (window as any).__awfaceRuntime = this.runtimeState;
+  }
+
+  clearRuntimeState(): void {
+    this.runtimeState = {};
+    this.activeSession = null;
+    (window as any).__awfaceRuntime = this.runtimeState;
+    sessionStorage.removeItem(ACTIVE_SESSION_KEY);
+    sessionStorage.removeItem(COMPLETION_KEY);
+    localStorage.removeItem(APPKEY_KEY);
+    localStorage.removeItem(TENANT_LOGO_URL_KEY);
+    localStorage.removeItem(JOURNEY_SUBJECT_NAME_KEY);
+    localStorage.removeItem(JOURNEY_TYPE_KEY);
+    localStorage.removeItem('hasLiveness');
+    localStorage.removeItem('awface.deviceLocation');
+  }
+
+  private markSessionAppkey(sessionId: string, appkey: string): void {
+    this.runtimeState.appkey = appkey;
+    localStorage.setItem(APPKEY_KEY, appkey);
+    (window as any).__awfaceRuntime = this.runtimeState;
+
+    if (this.activeSession?.id !== sessionId) {
       return;
     }
 
-    this.saveLocalSession({
-      ...session,
+    this.activeSession = {
+      ...this.activeSession,
       appkey,
       status: 'APPKEY_CREATED',
       updatedAt: new Date().toISOString(),
-    });
+    };
   }
 
   private persistActiveSession(session: AwfaceJourneySession): void {
-    this.saveLocalSession(session);
-    localStorage.setItem(ACTIVE_SESSION_KEY, session.id);
-  }
-
-  private saveLocalSession(session: AwfaceJourneySession): void {
-    const sessions = this.getLocalSessions();
-    const nextSessions = sessions.some(item => item.id === session.id)
-      ? sessions.map(item => (item.id === session.id ? session : item))
-      : [session, ...sessions];
-
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(nextSessions));
-  }
-
-  private getLocalSessions(): AwfaceJourneySession[] {
-    return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
-  }
-
-  private findTenantByToken(integrationToken: string): AwfaceTenant | undefined {
-    const tenant = this.getLocalTenants().find(item => item.integrationToken === integrationToken);
-    return tenant ? this.withTenantDefaults(tenant) : undefined;
-  }
-
-  private getLocalTenants(): AwfaceTenant[] {
-    return (JSON.parse(localStorage.getItem(TENANTS_KEY) || '[]') as AwfaceTenant[])
-      .map(tenant => this.withTenantDefaults(tenant));
-  }
-
-  private setLocalTenants(tenants: AwfaceTenant[]): void {
-    localStorage.setItem(TENANTS_KEY, JSON.stringify(tenants));
+    this.activeSession = session;
+    sessionStorage.setItem(ACTIVE_SESSION_KEY, session.id);
+    localStorage.setItem(TENANT_LOGO_URL_KEY, this.createJourneyLogoUrl(session.id));
+    localStorage.setItem(JOURNEY_SUBJECT_NAME_KEY, session.subject.fullName);
+    localStorage.setItem(JOURNEY_TYPE_KEY, session.journeyType);
   }
 
   private createIntegrationToken(): string {
     return `awf_${crypto.randomUUID().replace(/-/g, '')}`;
   }
 
-  private ensureSeedTenant(): void {
-    if (this.getLocalTenants().length) {
-      return;
-    }
+  private clearLegacySensitiveLocalStorage(): void {
+    LEGACY_LOCAL_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
+  }
 
-    const now = new Date().toISOString();
-    this.setLocalTenants([
-      {
-        id: 'tenant-demo',
-        name: 'Tenant Demonstração',
-        integrationToken: 'awf_demo_token',
-        status: 'ACTIVE',
-        termsUrl: 'https://awface.com.br/termos',
-        privacyUrl: 'https://awface.com.br/privacidade',
-        theme: 'LIGHT',
-        primaryColor: '#007060',
-        secondaryColor: '#315f88',
-        callbackUrl: 'https://host.example.com/webhook/awface',
-        secureCallbackToken: 'demo-secure-callback-token',
-        callbackOAuthEnabled: false,
-        callbackOAuthTokenUrl: '',
-        callbackOAuthClientId: '',
-        callbackOAuthClientSecret: '',
-        credentials: [
-          {
-            journeyType: 'LIVENESS',
-            providerUser: 'login',
-            providerPass: '3355a3973f54a008c642ee94fd0313d7',
-          },
-        ],
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]);
+  private createJourneyLogoUrl(journeyId: string): string {
+    return `${this.apiBaseUrl}/api/awface/journeys/${journeyId}/tenant-logo`;
   }
 
   private withTenantDefaults(tenant: AwfaceTenant): AwfaceTenant {
@@ -393,5 +329,4 @@ export class AwfaceService {
     const [, r, g, b] = match;
     return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
   }
-
 }

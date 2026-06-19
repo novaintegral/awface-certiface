@@ -18,13 +18,13 @@ import { AwfaceCompletionResult, AwfaceJourneySession } from '../awface/models';
   styleUrls: ['./facetec-v10.component.css']
 })
 export class FacetecV10Component implements OnInit, OnDestroy {
-  private static readonly DeviceLocationStorageKey = 'awface.deviceLocation';
-
   FacetecLogo: string = '/assets/img/logo_certiface_trans.png';
   status: string = "";
   appkey: any;
   facetecStrings: any;
   activeSession: AwfaceJourneySession | null = null;
+  journeySubjectName = '';
+  journeyTypeLabel = '';
   isAutonomousJourney = false;
 
   private faceTecSDKInstance!: FaceTecSDKInstance;
@@ -43,11 +43,14 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   ) { }
 
   async ngOnInit() {
-    this.appkey = window.localStorage.getItem('appkey');
+    this.appkey = this.awfaceService.getRuntimeAppkey();
     this.activeSession = this.awfaceService.getActiveSession();
+    this.journeySubjectName = this.activeSession?.subject.fullName || this.awfaceService.getActiveJourneySubjectName() || '';
+    const journeyType = this.activeSession?.journeyType || this.awfaceService.getActiveJourneyType();
+    this.journeyTypeLabel = journeyType ? this.awfaceService.getJourneyLabel(journeyType) : '';
     this.isAutonomousJourney = this.awfaceService.getActiveJourneySource() === 'AUTONOMOUS';
 
-    this.FacetecLogo = this.awfaceService.getLogoSource(this.activeSession?.tenant.logoBase64);
+    this.FacetecLogo = this.awfaceService.getJourneyLogoSource(this.activeSession);
     await this.captureDeviceLocation();
 
     window.addEventListener('awface:liveness-session-completed', this.sessionCompletedHandler);
@@ -76,26 +79,18 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   };
 
   public deleteAppKey() {
-    window.localStorage.removeItem('appkey');
-    window.localStorage.removeItem('hasLiveness');
-    window.localStorage.removeItem('awface.completion');
-    window.localStorage.removeItem(FacetecV10Component.DeviceLocationStorageKey);
+    this.awfaceService.clearRuntimeState();
 
     this.router.navigateByUrl('/journey-start');
   };
 
   public cancelProcess() {
-    window.localStorage.removeItem('appkey');
-    window.localStorage.removeItem('hasLiveness');
-    window.localStorage.removeItem('awface.completion');
-    window.localStorage.removeItem(FacetecV10Component.DeviceLocationStorageKey);
+    this.awfaceService.clearRuntimeState();
 
     window.close();
   };
 
   private captureDeviceLocation(): Promise<void> {
-    window.localStorage.removeItem(FacetecV10Component.DeviceLocationStorageKey);
-
     if (!navigator.geolocation) {
       return Promise.resolve();
     }
@@ -103,12 +98,12 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     return new Promise(resolve => {
       navigator.geolocation.getCurrentPosition(
         position => {
-          window.localStorage.setItem(FacetecV10Component.DeviceLocationStorageKey, JSON.stringify({
+          this.awfaceService.setRuntimeDeviceLocation({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
             capturedAt: new Date().toISOString(),
-          }));
+          });
           resolve();
         },
         () => resolve(),
@@ -232,7 +227,8 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   }
 
   private startCompletionPolling(): void {
-    if (!this.activeSession) {
+    const journeyId = this.activeSession?.id || this.awfaceService.getActiveJourneyId();
+    if (!journeyId) {
       this.saveAndNavigateToCompletion({
         status: 'FAILED',
         message: 'A prova de vida foi concluída, mas a jornada não foi encontrada para confirmar a comunicação final.',
@@ -244,7 +240,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     let attempts = 0;
 
     this.completionPolling = timer(0, 1000).pipe(
-      switchMap(() => this.awfaceService.getCompletionStatus(this.activeSession!.id))
+      switchMap(() => this.awfaceService.getCompletionStatus(journeyId))
     ).subscribe({
       next: result => {
         attempts += 1;

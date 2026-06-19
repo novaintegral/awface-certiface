@@ -119,7 +119,7 @@ export class JourneyComponent implements OnInit {
   }
 
   getTenantLogo(): string {
-    return this.awfaceService.getLogoSource(this.session?.tenant.logoBase64);
+    return this.awfaceService.getJourneyLogoSource(this.session);
   }
 
   private issueAppkeyAndContinue(session: AwfaceJourneySession): void {

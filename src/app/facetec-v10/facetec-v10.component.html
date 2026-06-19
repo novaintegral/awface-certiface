@@ -6,10 +6,10 @@
           <img [src]="FacetecLogo" [alt]="activeSession?.tenant?.name || 'CertiFace'" />
         </div>
 
-        <div class="awface-session-heading" *ngIf="activeSession">
+        <div class="awface-session-heading" *ngIf="journeySubjectName || journeyTypeLabel">
           <p>Prova de vida</p>
-          <h1>{{ activeSession.subject.fullName }}</h1>
-          <span>{{ awfaceService.getJourneyLabel(activeSession.journeyType) }}</span>
+          <h1>{{ journeySubjectName }}</h1>
+          <span>{{ journeyTypeLabel }}</span>
         </div>
         <p class="awface-helper">
           Quando estiver tudo pronto, toque no botão abaixo. O sistema vai pedir acesso à câmera e orientar cada movimento.

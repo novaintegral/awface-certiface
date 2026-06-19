@@ -43,7 +43,7 @@ export class JourneyCompletionComponent implements OnInit, OnDestroy {
   }
 
   getTenantLogo(): string {
-    return this.awfaceService.getLogoSource(this.session?.tenant.logoBase64);
+    return this.awfaceService.getJourneyLogoSource(this.session);
   }
 
   private startCloseCountdown(): void {

@@ -15,6 +15,8 @@ import {
   styleUrls: ['./admin.component.scss'],
 })
 export class AdminTenantsComponent implements OnInit {
+  private readonly maxLogoSizeBytes = 256 * 1024;
+
   readonly journeyTypes = Object.entries(AWFACE_JOURNEY_LABELS).map(([value, label]) => ({
     value: value as AwfaceJourneyType,
     label,
@@ -118,6 +120,12 @@ export class AdminTenantsComponent implements OnInit {
 
     if (!file.type.startsWith('image/')) {
       this.message = 'Selecione um arquivo de imagem para o logotipo.';
+      input.value = '';
+      return;
+    }
+
+    if (file.size > this.maxLogoSizeBytes) {
+      this.message = 'O logotipo deve ter no máximo 256 KB. Use uma imagem otimizada para web.';
       input.value = '';
       return;
     }

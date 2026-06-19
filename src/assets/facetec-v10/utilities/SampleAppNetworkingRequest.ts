@@ -13,7 +13,8 @@ export class SampleAppNetworkingRequest {
     sessionRequestCallback: FaceTecSessionRequestProcessorCallback
   ): void => {
 
-    const appkey = window.localStorage.getItem('appkey');
+    const runtime = (window as any).__awfaceRuntime || {};
+    const appkey = runtime.appkey || window.localStorage.getItem('appkey');
     const userAgent = window.navigator.userAgent;
 
     if (!appkey) {
@@ -119,16 +120,6 @@ export class SampleAppNetworkingRequest {
   };
 
   private static getDeviceLocation = (): any | null => {
-    const value = window.localStorage.getItem('awface.deviceLocation');
-    if (!value) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(value);
-    }
-    catch {
-      return null;
-    }
+    return ((window as any).__awfaceRuntime || {}).deviceLocation || null;
   };
 }
