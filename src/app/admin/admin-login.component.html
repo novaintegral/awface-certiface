@@ -6,19 +6,19 @@
     <p>Entre para configurar tenants, credenciais, callback e identidade visual.</p>
 
     <form (ngSubmit)="login()" class="admin-form">
-      <label>
-        Email
-        <input name="email" type="email" [(ngModel)]="email" autocomplete="username" />
-      </label>
+      <div>
+        <label class="form-label" for="adminEmail">Email</label>
+        <input id="adminEmail" class="form-control" name="email" type="email" [(ngModel)]="email" autocomplete="username" />
+      </div>
 
-      <label>
-        Senha
-        <input name="password" type="password" [(ngModel)]="password" autocomplete="current-password" />
-      </label>
+      <div>
+        <label class="form-label" for="adminPassword">Senha</label>
+        <input id="adminPassword" class="form-control" name="password" type="password" [(ngModel)]="password" autocomplete="current-password" />
+      </div>
 
       <p class="error-message" *ngIf="error">{{ error }}</p>
 
-      <button type="submit">Entrar</button>
+      <button type="submit" class="btn btn-primary">Entrar</button>
     </form>
   </section>
 </main>

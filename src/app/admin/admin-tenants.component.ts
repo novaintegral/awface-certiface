@@ -175,6 +175,16 @@ export class AdminTenantsComponent implements OnInit {
     return labels[status];
   }
 
+  statusClass(status: AwfaceTenantStatus): string {
+    const classes: Record<AwfaceTenantStatus, string> = {
+      ACTIVE: 'text-bg-success',
+      BLOCKED: 'text-bg-warning',
+      CANCELLED: 'text-bg-danger',
+    };
+
+    return classes[status];
+  }
+
   logout(): void {
     this.awfaceService.logoutAdmin();
     this.router.navigateByUrl('/admin');
