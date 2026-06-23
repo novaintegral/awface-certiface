@@ -26,6 +26,8 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   journeySubjectName = '';
   journeyTypeLabel = '';
   isAutonomousJourney = false;
+  isLivenessReady = false;
+  livenessButtonLabel = 'Iniciar prova de vida';
 
   private faceTecSDKInstance!: FaceTecSDKInstance;
   private themeHelpers!: ThemeHelpers;
@@ -33,6 +35,12 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   private completionPolling?: Subscription;
   private readonly sessionCompletedHandler = (): void => {
     this.ngZone.run(() => this.startCompletionPolling());
+  };
+  private readonly sessionRejectedHandler = (): void => {
+    this.ngZone.run(() => this.prepareRetry());
+  };
+  private readonly sessionInterruptedHandler = (): void => {
+    this.ngZone.run(() => this.prepareInterruptedRetry());
   };
 
   constructor(
@@ -54,6 +62,8 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     await this.captureDeviceLocation();
 
     window.addEventListener('awface:liveness-session-completed', this.sessionCompletedHandler);
+    window.addEventListener('awface:liveness-session-rejected', this.sessionRejectedHandler);
+    window.addEventListener('awface:liveness-session-interrupted', this.sessionInterruptedHandler);
 
     DeveloperStatusMessages.displayMessage("Preparando a câmera...")
 
@@ -70,10 +80,14 @@ export class FacetecV10Component implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     window.removeEventListener('awface:liveness-session-completed', this.sessionCompletedHandler);
+    window.removeEventListener('awface:liveness-session-rejected', this.sessionRejectedHandler);
+    window.removeEventListener('awface:liveness-session-interrupted', this.sessionInterruptedHandler);
     this.completionPolling?.unsubscribe();
   }
 
   public showLiveness3D() {
+    this.livenessButtonLabel = 'Iniciar prova de vida';
+    this.isLivenessReady = false;
     SampleAppUtilities.fadeOutMainUIAndPrepareForSession();
     this.faceTecSDKInstance.start3DLiveness(new SessionRequestProcessor());
   };
@@ -137,6 +151,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     this.sdkV10.configureLocalization(this.facetecStrings);
     this.themeHelpers.setAppTheme("Oiti-Dark");
 
+    this.isLivenessReady = true;
     SampleAppUtilities.setupAndFadeInMainUIOnInitializationSuccess();
     DeveloperStatusMessages.logAndDisplayMessage("Inicializado com sucesso");
   };
@@ -175,14 +190,15 @@ export class FacetecV10Component implements OnInit, OnDestroy {
 
     switch (faceTecSessionResult.status) {
       case FaceTecSDK.FaceTecSessionStatus.RequestAborted:
-        DeveloperStatusMessages.displayMessage("Prova de Vida reprovada. Insira uma nova appkey e tente novamente");
+        window.dispatchEvent(new CustomEvent('awface:liveness-session-rejected'));
         break;
       case FaceTecSDK.FaceTecSessionStatus.SessionCompleted:
         DeveloperStatusMessages.displayMessage('Prova de Vida em processo de validação... <span class="awface-status-spinner"></span>')
         window.dispatchEvent(new CustomEvent('awface:liveness-session-completed'));
         break;
       case FaceTecSDK.FaceTecSessionStatus.UserCancelledFaceScan:
-        DeveloperStatusMessages.displayMessage("Saiu da tela inteira sem concluir a prova de vida")
+        DeveloperStatusMessages.displayMessage('<strong class="awface-neutral-status">Saiu da tela inteira sem concluir a prova de vida.</strong>')
+        window.dispatchEvent(new CustomEvent('awface:liveness-session-interrupted'));
         break;
       case FaceTecSDK.FaceTecSessionStatus.LockedOut:
         DeveloperStatusMessages.displayMessage("O dispositivo está bloqueado do FaceTec Browser SDK");
@@ -199,6 +215,29 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     }
     SampleAppUtilities.showMainUI();
   };
+
+  private prepareRetry(): void {
+    this.livenessButtonLabel = 'Tente novamente';
+    this.isLivenessReady = true;
+    DeveloperStatusMessages.displayMessage('<strong class="awface-neutral-status">Prova de Vida reprovada.</strong>');
+    this.enableLivenessButtonAfterSdkTransition();
+  }
+
+  private prepareInterruptedRetry(): void {
+    this.livenessButtonLabel = 'Iniciar prova de vida';
+    this.isLivenessReady = true;
+    this.enableLivenessButtonAfterSdkTransition();
+  }
+
+  private enableLivenessButtonAfterSdkTransition(): void {
+    const enableButton = (): void => {
+      this.isLivenessReady = true;
+      document.getElementById('liveness-button')?.removeAttribute('disabled');
+    };
+
+    enableButton();
+    window.setTimeout(enableButton, 900);
+  }
 
   private loadScript(src: string): Promise<void> {
     return new Promise((resolve, reject) => {
