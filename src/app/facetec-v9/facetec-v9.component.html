@@ -1,0 +1,33 @@
+<div class="row awface-facetec-page" [ngStyle]="awfaceService.getTenantThemeStyle(activeSession?.tenant)">
+  <div class="col-12 mt-4 mb-2">
+    <div class="wrapping-box-container">
+      <div id="controls" class="controls">
+        <div id="custom-logo-container">
+          <img [src]="FacetecLogo" [alt]="activeSession?.tenant?.name || 'CertiFace'" />
+        </div>
+
+        <div class="awface-session-heading" *ngIf="journeySubjectName || journeyTypeLabel">
+          <p>Prova de vida</p>
+          <h1>{{ journeySubjectName }}</h1>
+          <span>{{ journeyTypeLabel }}</span>
+        </div>
+        <p class="awface-helper">
+          Quando estiver tudo pronto, toque no botão abaixo. O sistema vai pedir acesso à câmera e orientar cada movimento.
+        </p>
+        <button type="button" id="liveness-button" class="btn btn-primary btn-rounded"
+          [disabled]="!isLivenessReady" (click)="showLiveness3D()">
+          {{ livenessButtonLabel }}
+        </button>
+        <p id="status" class="mt-2">{{ status }}</p>
+        <hr />
+      </div>
+    </div>
+
+    <div class="text-center awface-session-action" *ngIf="!isAutonomousJourney">
+      <button type="button" id="delete-appkey" class="btn btn-link" (click)="deleteAppKey()">Recomeçar</button>
+    </div>
+    <div class="text-center awface-session-action" *ngIf="isAutonomousJourney">
+      <button type="button" id="cancel-process" class="btn btn-link" (click)="cancelProcess()">Cancelar o processo</button>
+    </div>
+  </div>
+</div>

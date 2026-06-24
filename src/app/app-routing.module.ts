@@ -8,6 +8,7 @@ import { SenddocumentComponent } from './senddocument/senddocument.component';
 import { SendDigitalCnhComponent } from './send-digital-cnh/send-digital-cnh.component';
 import { IproovComponent } from './iproov/iproov.component';
 import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
+import { JourneyEngineComponent } from './journey-engine/journey-engine.component';
 import { JourneyComponent } from './journey/journey.component';
 import { JourneyLaunchComponent } from './journey-launch/journey-launch.component';
 import { JourneyCompletionComponent } from './journey-completion/journey-completion.component';
@@ -54,7 +55,7 @@ const routes: Routes = [
   },
   {
     path: 'journey',
-    component: FacetecV10Component,
+    component: JourneyEngineComponent,
   },
   {
     path: 'journey-completion',

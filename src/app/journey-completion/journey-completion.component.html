@@ -1,21 +1,29 @@
 <div class="completion-page" [ngStyle]="awfaceService.getTenantThemeStyle(session?.tenant)">
-  <section class="completion-panel" [class.failed]="!success">
+  <section class="completion-panel" [class.failed]="failed" [class.pending]="pending">
     <img class="tenant-logo" [src]="getTenantLogo()" [alt]="session?.tenant?.name || 'CertiFace'" />
 
     <div class="completion-icon" aria-hidden="true">
-      {{ success ? '✓' : '!' }}
+      <span *ngIf="success">✓</span>
+      <span *ngIf="failed">!</span>
+      <span class="completion-spinner" *ngIf="pending"></span>
     </div>
 
     <p class="completion-eyebrow">Prova de vida</p>
-    <h1>{{ success ? 'Estamos preparando tudo para iniciar a assinatura do documento' : 'Validação concluída com pendência' }}</h1>
+    <h1 *ngIf="pending || success">Estamos preparando tudo para iniciar a assinatura do documento</h1>
+    <h1 *ngIf="failed">Validação concluída com pendência</h1>
 
     <p class="completion-message">
-      {{ result?.message || 'A prova de vida foi processada.' }}
+      {{ result?.message || (pending ? 'A prova de vida está sendo processada.' : 'A prova de vida foi processada.') }}
     </p>
-    
-    <div class="completion-progress" *ngIf="success" aria-label="Preparando assinatura">
-      <div class="completion-progress-bar" [style.width.%]="closeProgress"></div>
+
+    <div class="completion-progress" *ngIf="pending || success" aria-label="Preparando assinatura">
+      <div class="completion-progress-bar" [class.indeterminate]="pending"
+        [style.width.%]="success ? closeProgress : null"></div>
     </div>
+
+    <p class="completion-close-note" *ngIf="pending">
+      Aguarde enquanto concluímos a validação e comunicamos o sistema de assinatura.
+    </p>
 
     <p class="completion-close-note" *ngIf="success && !closeBlocked">
       Esta aba será fechada automaticamente.
@@ -25,8 +33,8 @@
       Seu navegador bloqueou o fechamento automático. Feche esta aba para continuar.
     </p>
 
-    <p class="completion-next" *ngIf="!success">
+    <p class="completion-next" *ngIf="failed">
       Entre em contato com o administrador do sistema para continuar.
-    </p>    
+    </p>
   </section>
 </div>

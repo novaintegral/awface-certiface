@@ -36,6 +36,7 @@ services:
       Awface__Schema: "public"
       Awface__FrontendBaseUrl: "${AWFACE_FRONTEND_BASE_URL:-http://localhost:8080}"
       Awface__LivenessAppkeyLifetimeMinutes: "${AWFACE_LIVENESS_APPKEY_LIFETIME_MINUTES:-20}"
+      Awface__LivenessEngine: "${AWFACE_LIVENESS_ENGINE:-V10}"
       Awface__FaceStorage__RootPath: "${AWFACE_FACE_STORAGE_ROOT_PATH:-/app/storage/faces}"
       Awface__FaceStorage__EncryptionKey: "${AWFACE_FACE_STORAGE_ENCRYPTION_KEY:-troque-esta-chave-em-producao}"
       Awface__Admin__Email: "${AWFACE_ADMIN_EMAIL:-admin@awface.local}"

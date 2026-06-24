@@ -39,7 +39,7 @@ export class SampleAppNetworkingRequest {
         throw new Error("AWFace API URL nao configurada para process-request.");
       }
 
-      const processRequestUrl = `${environment.awfaceApiUrl}/api/awface/facetec/3d/process-request`;
+      const processRequestUrl = `${environment.awfaceApiUrl}/api/awface/facetec/v10/3d/process-request`;
       const request: XMLHttpRequest = new XMLHttpRequest();
 
       request.open("POST", processRequestUrl);

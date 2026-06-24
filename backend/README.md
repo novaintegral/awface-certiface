@@ -65,7 +65,16 @@ Endpoints administrativos e internos:
 - `POST /api/awface/journeys/{journeyId}/consent`
 - `POST /api/awface/journeys/{journeyId}/appkey`
 - `GET /api/awface/journeys/{journeyId}/completion`
-- `POST /api/awface/facetec/3d/process-request`
+- `POST /api/awface/facetec/v10/3d/process-request`
+- `POST /api/awface/facetec/3d/process-request` (alias legado V10)
+- `POST /api/awface/facetec/v9/3d/initialize`
+- `POST /api/awface/facetec/v9/3d/session-token`
+- `POST /api/awface/facetec/v9/3d/liveness`
+
+O engine utilizado por novas jornadas é definido por `Awface:LivenessEngine`
+ou pela variável `AWFACE_LIVENESS_ENGINE` no Docker Compose. Valores aceitos:
+`V9` e `V10`. O valor é persistido na jornada para que alterações posteriores
+de ambiente não modifiquem processos já iniciados.
 - `POST /webhookliveness`
 
 O Angular em desenvolvimento aponta para `http://localhost:5000` por `environment.awfaceApiUrl`.

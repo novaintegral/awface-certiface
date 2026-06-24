@@ -8,6 +8,7 @@ import {
   AwfaceConsentDecision,
   AwfaceCompletionResult,
   AwfaceJourneyLaunchResolveResponse,
+  AwfaceLivenessEngine,
   AwfaceJourneySession,
   AwfaceJourneyStartRequest,
   AwfaceJourneyType,
@@ -23,6 +24,7 @@ const APPKEY_KEY = 'appkey';
 const TENANT_LOGO_URL_KEY = 'awface.tenantLogoUrl';
 const JOURNEY_SUBJECT_NAME_KEY = 'awface.journeySubjectName';
 const JOURNEY_TYPE_KEY = 'awface.journeyType';
+const LIVENESS_ENGINE_KEY = 'awface.livenessEngine';
 const LEGACY_LOCAL_STORAGE_KEYS = [
   'awface.sessions',
   'awface.tenants',
@@ -165,6 +167,10 @@ export class AwfaceService {
     return journeyType && journeyType in AWFACE_JOURNEY_LABELS ? journeyType as AwfaceJourneyType : null;
   }
 
+  getActiveLivenessEngine(): AwfaceLivenessEngine {
+    return localStorage.getItem(LIVENESS_ENGINE_KEY) === 'V9' ? 'V9' : 'V10';
+  }
+
   registerConsent(sessionId: string, decision: AwfaceConsentDecision): Observable<AwfaceJourneySession> {
     const endpoint = `${this.apiBaseUrl}/api/awface/journeys/${sessionId}/consent`;
 
@@ -173,8 +179,8 @@ export class AwfaceService {
     );
   }
 
-  issueAppkey(session: AwfaceJourneySession): Observable<string> {
-    const endpoint = `${this.apiBaseUrl}/api/awface/journeys/${session.id}/appkey`;
+  issueAppkey(session: AwfaceJourneySession, force = false): Observable<string> {
+    const endpoint = `${this.apiBaseUrl}/api/awface/journeys/${session.id}/appkey?force=${force}`;
 
     return this.http.post<{ appkey: string }>(endpoint, {}).pipe(
       map(response => response.appkey),
@@ -262,6 +268,7 @@ export class AwfaceService {
     localStorage.removeItem(TENANT_LOGO_URL_KEY);
     localStorage.removeItem(JOURNEY_SUBJECT_NAME_KEY);
     localStorage.removeItem(JOURNEY_TYPE_KEY);
+    localStorage.removeItem(LIVENESS_ENGINE_KEY);
     localStorage.removeItem('hasLiveness');
     localStorage.removeItem('awface.deviceLocation');
   }
@@ -289,6 +296,7 @@ export class AwfaceService {
     localStorage.setItem(TENANT_LOGO_URL_KEY, this.createJourneyLogoUrl(session.id));
     localStorage.setItem(JOURNEY_SUBJECT_NAME_KEY, session.subject.fullName);
     localStorage.setItem(JOURNEY_TYPE_KEY, session.journeyType);
+    localStorage.setItem(LIVENESS_ENGINE_KEY, session.livenessEngine || 'V10');
   }
 
   private createIntegrationToken(): string {

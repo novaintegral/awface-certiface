@@ -190,6 +190,59 @@ public sealed class CertifaceClient
         throw new InvalidOperationException("Fluxo inesperado ao processar process-request Certiface.");
     }
 
+    public Task<CertifaceProxyResponse> InitializeV9Async(JsonElement payload, CancellationToken cancellationToken)
+    {
+        var providerPayload = JsonSerializer.Serialize(new
+        {
+            appkey = GetRequiredString(payload, "appkey"),
+            platform = GetOptionalString(payload, "platform") ?? "web"
+        });
+
+        return PostJsonProxyAsync("/facecaptcha/service/captcha/3d/initialize", providerPayload, cancellationToken);
+    }
+
+    public Task<CertifaceProxyResponse> CreateV9SessionTokenAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        var providerPayload = JsonSerializer.Serialize(new
+        {
+            appkey = GetRequiredString(payload, "appkey"),
+            userAgent = GetRequiredString(payload, "userAgent")
+        });
+
+        return PostJsonProxyAsync("/facecaptcha/service/captcha/3d/session-token", providerPayload, cancellationToken);
+    }
+
+    public Task<CertifaceProxyResponse> ProcessV9LivenessAsync(JsonElement payload, CancellationToken cancellationToken)
+    {
+        var providerPayload = JsonSerializer.Serialize(new
+        {
+            appkey = GetRequiredString(payload, "appkey"),
+            userAgent = GetRequiredString(payload, "userAgent"),
+            faceScan = GetRequiredString(payload, "faceScan"),
+            auditTrailImage = GetRequiredString(payload, "auditTrailImage"),
+            lowQualityAuditTrailImage = GetRequiredString(payload, "lowQualityAuditTrailImage"),
+            sessionId = GetRequiredString(payload, "sessionId")
+        });
+
+        return PostJsonProxyAsync("/facecaptcha/service/captcha/3d/liveness", providerPayload, cancellationToken);
+    }
+
+    private async Task<CertifaceProxyResponse> PostJsonProxyAsync(
+        string path,
+        string providerPayload,
+        CancellationToken cancellationToken)
+    {
+        using var content = new StringContent(providerPayload, Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PostAsync($"{_options.BaseUrl}{path}", content, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        return new CertifaceProxyResponse(
+            (int)response.StatusCode,
+            body,
+            response.Content.Headers.ContentType?.ToString() ?? "application/json"
+        );
+    }
+
     private static string CreateProcessRequestProviderPayload(JsonElement payload)
     {
         return JsonSerializer.Serialize(new
@@ -213,6 +266,18 @@ public sealed class CertifaceClient
         }
 
         return property.GetString()!;
+    }
+
+    private static string? GetOptionalString(JsonElement payload, string propertyName)
+    {
+        if (!payload.TryGetProperty(propertyName, out var property)
+            || property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var value = property.GetString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     private async Task<CertifaceCredentialResponse> GetCredentialTokenAsync(TenantCredential credential, CancellationToken cancellationToken)

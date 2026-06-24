@@ -59,6 +59,7 @@ CREATE TABLE awface_liveness_journey (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES awface_tenant(id),
   journey_type journey_type NOT NULL,
+  liveness_engine varchar(3) NOT NULL DEFAULT 'V10' CHECK (liveness_engine IN ('V9', 'V10')),
   cpf_hash text NOT NULL,
   cpf_ciphertext text NOT NULL,
   full_name_ciphertext text NOT NULL,
@@ -87,6 +88,20 @@ CREATE UNIQUE INDEX ux_awface_liveness_journey_launch_token_hash
 CREATE INDEX ix_awface_liveness_journey_launch_expires_at
   ON awface_liveness_journey (launch_expires_at)
   WHERE launch_token_hash IS NOT NULL;
+
+CREATE TABLE awface_liveness_appkey_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  appkey text NOT NULL UNIQUE,
+  liveness_engine varchar(3) NOT NULL CHECK (liveness_engine IN ('V9', 'V10')),
+  attempt integer NOT NULL,
+  issued_at timestamptz NOT NULL DEFAULT now(),
+  superseded_at timestamptz,
+  UNIQUE (journey_id, attempt)
+);
+
+CREATE INDEX ix_awface_liveness_appkey_history_journey
+  ON awface_liveness_appkey_history (journey_id, issued_at);
 
 CREATE TABLE awface_liveness_consent (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

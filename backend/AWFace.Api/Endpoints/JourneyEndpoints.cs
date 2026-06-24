@@ -17,6 +17,7 @@ public static class JourneyEndpoints
             JourneyStartRequest request,
             HttpContext httpContext,
             AwfaceRepository repository,
+            IOptions<AwfaceOptions> options,
             CancellationToken cancellationToken) =>
         {
             var errors = JourneyValidator.Validate(request);
@@ -42,7 +43,13 @@ public static class JourneyEndpoints
             }
 
             var userAgent = httpContext.Request.Headers.UserAgent.ToString();
-            var journey = await repository.CreateJourneyAsync(tenant, request, userAgent, cancellationToken);
+            var journey = await repository.CreateJourneyAsync(
+                tenant,
+                request,
+                options.Value.LivenessEngine,
+                userAgent,
+                cancellationToken
+            );
             return Results.Ok(journey);
         });
 
@@ -72,6 +79,7 @@ public static class JourneyEndpoints
 
         group.MapPost("/{journeyId:guid}/appkey", async (
             Guid journeyId,
+            bool? force,
             AwfaceRepository repository,
             CertifaceClient certiface,
             IOptions<AwfaceOptions> options,
@@ -89,7 +97,9 @@ public static class JourneyEndpoints
             }
 
             var appkeyLifetime = TimeSpan.FromMinutes(Math.Max(1, options.Value.LivenessAppkeyLifetimeMinutes));
-            var reusableAppkey = await repository.GetReusableAppkeyAsync(journeyId, appkeyLifetime, cancellationToken);
+            var reusableAppkey = force == true
+                ? null
+                : await repository.GetReusableAppkeyAsync(journeyId, appkeyLifetime, cancellationToken);
             if (!string.IsNullOrWhiteSpace(reusableAppkey))
             {
                 return Results.Ok(new AppkeyResponse(reusableAppkey));

@@ -184,7 +184,15 @@ public sealed class AwfaceRepository
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = JourneySelectSql + " where j.appkey = @appkey";
+        command.CommandText = JourneySelectSql + """
+             where j.appkey = @appkey
+                or exists (
+                    select 1
+                    from awface_liveness_appkey_history history
+                    where history.journey_id = j.id
+                      and history.appkey = @appkey
+                )
+            """;
         command.Parameters.AddWithValue("appkey", appkey);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -203,24 +211,30 @@ public sealed class AwfaceRepository
         };
     }
 
-    public async Task<JourneySession> CreateJourneyAsync(Tenant tenant, JourneyStartRequest request, string? userAgent, CancellationToken cancellationToken)
+    public async Task<JourneySession> CreateJourneyAsync(
+        Tenant tenant,
+        JourneyStartRequest request,
+        LivenessEngine livenessEngine,
+        string? userAgent,
+        CancellationToken cancellationToken)
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
         var journeyId = Guid.NewGuid();
         await using var command = connection.CreateCommand();
         command.CommandText = """
             insert into awface_liveness_journey (
-                id, tenant_id, journey_type, cpf_hash, cpf_ciphertext, full_name_ciphertext,
+                id, tenant_id, journey_type, liveness_engine, cpf_hash, cpf_ciphertext, full_name_ciphertext,
                 birth_date_ciphertext, external_client_id, status, user_agent, created_at, updated_at
             )
             values (
-                @id, @tenant_id, cast(@journey_type as journey_type), @cpf_hash, @cpf_ciphertext, @full_name_ciphertext,
+                @id, @tenant_id, cast(@journey_type as journey_type), @liveness_engine, @cpf_hash, @cpf_ciphertext, @full_name_ciphertext,
                 @birth_date_ciphertext, @external_client_id, 'CREATED', @user_agent, now(), now()
             )
             """;
         command.Parameters.AddWithValue("id", journeyId);
         command.Parameters.AddWithValue("tenant_id", tenant.Id);
         command.Parameters.AddWithValue("journey_type", request.JourneyType.ToString());
+        command.Parameters.AddWithValue("liveness_engine", livenessEngine.ToString());
         command.Parameters.AddWithValue("cpf_hash", _protector.Hash(JourneyValidator.DigitsOnly(request.Cpf)));
         command.Parameters.AddWithValue("cpf_ciphertext", _protector.Protect(JourneyValidator.DigitsOnly(request.Cpf)));
         command.Parameters.AddWithValue("full_name_ciphertext", _protector.Protect(request.FullName.Trim()));
@@ -238,6 +252,7 @@ public sealed class AwfaceRepository
         JourneyLaunchRequest request,
         string launchTokenHash,
         DateTimeOffset launchExpiresAt,
+        LivenessEngine livenessEngine,
         string? userAgent,
         CancellationToken cancellationToken)
     {
@@ -246,13 +261,13 @@ public sealed class AwfaceRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             insert into awface_liveness_journey (
-                id, tenant_id, journey_type, cpf_hash, cpf_ciphertext, full_name_ciphertext,
+                id, tenant_id, journey_type, liveness_engine, cpf_hash, cpf_ciphertext, full_name_ciphertext,
                 birth_date_ciphertext, external_client_id, status, user_agent,
                 launch_token_hash, launch_expires_at, host_reference, host_metadata,
                 created_at, updated_at
             )
             values (
-                @id, @tenant_id, cast(@journey_type as journey_type), @cpf_hash, @cpf_ciphertext, @full_name_ciphertext,
+                @id, @tenant_id, cast(@journey_type as journey_type), @liveness_engine, @cpf_hash, @cpf_ciphertext, @full_name_ciphertext,
                 @birth_date_ciphertext, @external_client_id, 'CREATED', @user_agent,
                 @launch_token_hash, @launch_expires_at, @host_reference, cast(@host_metadata as jsonb),
                 now(), now()
@@ -261,6 +276,7 @@ public sealed class AwfaceRepository
         command.Parameters.AddWithValue("id", journeyId);
         command.Parameters.AddWithValue("tenant_id", tenant.Id);
         command.Parameters.AddWithValue("journey_type", request.JourneyType.ToString());
+        command.Parameters.AddWithValue("liveness_engine", livenessEngine.ToString());
         command.Parameters.AddWithValue("cpf_hash", _protector.Hash(JourneyValidator.DigitsOnly(request.Cpf)));
         command.Parameters.AddWithValue("cpf_ciphertext", _protector.Protect(JourneyValidator.DigitsOnly(request.Cpf)));
         command.Parameters.AddWithValue("full_name_ciphertext", _protector.Protect(request.FullName.Trim()));
@@ -353,18 +369,81 @@ public sealed class AwfaceRepository
     public async Task<JourneySession?> SetJourneyAppkeyAsync(Guid journeyId, string appkey, CancellationToken cancellationToken)
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            update awface_liveness_journey
-            set appkey = @appkey,
-                appkey_created_at = now(),
-                status = 'APPKEY_CREATED',
-                updated_at = now()
-            where id = @journey_id
-            """;
-        command.Parameters.AddWithValue("journey_id", journeyId);
-        command.Parameters.AddWithValue("appkey", appkey);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var lockJourneyCommand = connection.CreateCommand())
+        {
+            lockJourneyCommand.Transaction = transaction;
+            lockJourneyCommand.CommandText = """
+                select id
+                from awface_liveness_journey
+                where id = @journey_id
+                for update
+                """;
+            lockJourneyCommand.Parameters.AddWithValue("journey_id", journeyId);
+            var lockedJourneyId = await lockJourneyCommand.ExecuteScalarAsync(cancellationToken);
+            if (lockedJourneyId is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+        }
+
+        await using (var closePreviousCommand = connection.CreateCommand())
+        {
+            closePreviousCommand.Transaction = transaction;
+            closePreviousCommand.CommandText = """
+                update awface_liveness_appkey_history
+                set superseded_at = now()
+                where journey_id = @journey_id
+                  and superseded_at is null
+                """;
+            closePreviousCommand.Parameters.AddWithValue("journey_id", journeyId);
+            await closePreviousCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var historyCommand = connection.CreateCommand())
+        {
+            historyCommand.Transaction = transaction;
+            historyCommand.CommandText = """
+                insert into awface_liveness_appkey_history (
+                    journey_id, appkey, liveness_engine, attempt, issued_at
+                )
+                select
+                    id,
+                    @appkey,
+                    liveness_engine,
+                    coalesce((
+                        select max(history.attempt)
+                        from awface_liveness_appkey_history history
+                        where history.journey_id = awface_liveness_journey.id
+                    ), 0) + 1,
+                    now()
+                from awface_liveness_journey
+                where id = @journey_id
+                """;
+            historyCommand.Parameters.AddWithValue("journey_id", journeyId);
+            historyCommand.Parameters.AddWithValue("appkey", appkey);
+            await historyCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var journeyCommand = connection.CreateCommand())
+        {
+            journeyCommand.Transaction = transaction;
+            journeyCommand.CommandText = """
+                update awface_liveness_journey
+                set appkey = @appkey,
+                    appkey_created_at = now(),
+                    status = 'APPKEY_CREATED',
+                    updated_at = now()
+                where id = @journey_id
+                """;
+            journeyCommand.Parameters.AddWithValue("journey_id", journeyId);
+            journeyCommand.Parameters.AddWithValue("appkey", appkey);
+            await journeyCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
 
         return await GetJourneyByIdAsync(connection, journeyId, cancellationToken);
     }
@@ -699,6 +778,7 @@ public sealed class AwfaceRepository
             reader.GetGuid(0),
             tenant,
             Enum.Parse<JourneyType>(reader.GetString(1)),
+            Enum.Parse<LivenessEngine>(reader.GetString(28)),
             new JourneySubject(
                 _protector.Unprotect(reader.GetString(2)),
                 _protector.Unprotect(reader.GetString(3)),
@@ -806,7 +886,7 @@ public sealed class AwfaceRepository
                t.id, t.name, t.integration_token, t.status::text, t.terms_url, t.privacy_url, t.logo_base64,
                t.theme, t.primary_color, t.secondary_color, t.callback_url, t.secure_callback_token,
                t.callback_oauth_enabled, t.callback_oauth_token_url, t.callback_oauth_client_id, t.callback_oauth_client_secret_ciphertext,
-               t.created_at, t.updated_at
+               t.created_at, t.updated_at, j.liveness_engine
         from awface_liveness_journey j
         join awface_tenant t on t.id = j.tenant_id
         """;

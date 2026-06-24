@@ -14,6 +14,12 @@ public enum JourneyType
     LIVENESS_FACE_BUREAU_DOCUMENT
 }
 
+public enum LivenessEngine
+{
+    V9,
+    V10
+}
+
 public enum JourneyStatus
 {
     CREATED,
@@ -71,6 +77,7 @@ public sealed record JourneySession(
     Guid Id,
     Tenant Tenant,
     JourneyType JourneyType,
+    LivenessEngine LivenessEngine,
     JourneySubject Subject,
     JourneyStatus Status,
     string? Appkey,

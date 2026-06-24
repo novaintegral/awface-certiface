@@ -28,7 +28,7 @@
               "node_modules/jquery/dist/jquery.js",
               "node_modules/popper.js/dist/umd/popper.js",
               "node_modules/bootstrap/dist/js/bootstrap.js",
-              "src/assets/core-sdk/FaceTecSDK.js/FaceTecSDK.js"
+              "src/assets/9.7.109/core-sdk/FaceTecSDK.js/FaceTecSDK.js"
             ]
           },
           "configurations": {

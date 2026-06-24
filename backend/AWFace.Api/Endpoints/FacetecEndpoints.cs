@@ -12,38 +12,85 @@ public static class FacetecEndpoints
     {
         var group = app.MapGroup("/api/awface/facetec").WithTags("AWFace FaceTec");
 
-        group.MapPost("/3d/process-request", async (
+        group.MapPost("/v10/3d/process-request", ProcessV10RequestAsync);
+        group.MapPost("/3d/process-request", ProcessV10RequestAsync)
+            .WithDescription("Alias legado do endpoint FaceTec V10.");
+
+        group.MapPost("/v9/3d/initialize", async (
+            JsonElement payload,
+            CertifaceClient certiface,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await certiface.InitializeV9Async(payload, cancellationToken);
+            return Results.Content(response.Body, response.ContentType, statusCode: response.StatusCode);
+        });
+
+        group.MapPost("/v9/3d/session-token", async (
+            JsonElement payload,
+            CertifaceClient certiface,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await certiface.CreateV9SessionTokenAsync(payload, cancellationToken);
+            return Results.Content(response.Body, response.ContentType, statusCode: response.StatusCode);
+        });
+
+        group.MapPost("/v9/3d/liveness", async (
             JsonElement payload,
             CertifaceClient certiface,
             IServiceScopeFactory scopeFactory,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
-            var logger = loggerFactory.CreateLogger("AWFace.FaceTec.ProcessRequest");
-            var response = await certiface.Process3dRequestAsync(payload, cancellationToken);
+            var logger = loggerFactory.CreateLogger("AWFace.FaceTec.V9.Liveness");
+            var response = await certiface.ProcessV9LivenessAsync(payload, cancellationToken);
 
             if (response.StatusCode >= 400)
             {
                 logger.LogWarning(
-                    "Certiface process-request retornou {StatusCode}. Campos recebidos pelo AWFace: {PayloadKeys}. "
-                    + "Campos encaminhados ao provedor: appkey,requestBlob,userAgent. Body: {Body}",
+                    "Certiface V9 liveness retornou {StatusCode}. Campos recebidos pelo AWFace: {PayloadKeys}. "
+                    + "O campo deviceLocation não é encaminhado ao provedor. Body: {Body}",
                     response.StatusCode,
                     string.Join(",", payload.EnumerateObject().Select(item => item.Name)),
                     response.Body
                 );
             }
 
-            QueueCompletionCallbackIfNeeded(payload, response, scopeFactory, loggerFactory);
-
+            QueueCompletionCallbackIfNeeded(payload, response, LivenessEngine.V9, scopeFactory, loggerFactory);
             return Results.Content(response.Body, response.ContentType, statusCode: response.StatusCode);
         });
 
         return app;
     }
 
+    private static async Task<IResult> ProcessV10RequestAsync(
+        JsonElement payload,
+        CertifaceClient certiface,
+        IServiceScopeFactory scopeFactory,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("AWFace.FaceTec.V10.ProcessRequest");
+        var response = await certiface.Process3dRequestAsync(payload, cancellationToken);
+
+        if (response.StatusCode >= 400)
+        {
+            logger.LogWarning(
+                "Certiface V10 process-request retornou {StatusCode}. Campos recebidos pelo AWFace: {PayloadKeys}. "
+                + "Campos encaminhados ao provedor: appkey,requestBlob,userAgent. Body: {Body}",
+                response.StatusCode,
+                string.Join(",", payload.EnumerateObject().Select(item => item.Name)),
+                response.Body
+            );
+        }
+
+        QueueCompletionCallbackIfNeeded(payload, response, LivenessEngine.V10, scopeFactory, loggerFactory);
+        return Results.Content(response.Body, response.ContentType, statusCode: response.StatusCode);
+    }
+
     private static void QueueCompletionCallbackIfNeeded(
         JsonElement requestPayload,
         CertifaceProxyResponse response,
+        LivenessEngine engine,
         IServiceScopeFactory scopeFactory,
         ILoggerFactory loggerFactory)
     {
@@ -57,7 +104,7 @@ public static class FacetecEndpoints
         using var responseDocument = JsonDocument.Parse(response.Body);
         var responseRoot = responseDocument.RootElement;
 
-        if (!responseRoot.TryGetProperty("valid", out var validElement) || !validElement.GetBoolean())
+        if (!IsSuccessfulProviderResponse(responseRoot, engine))
         {
             return;
         }
@@ -78,6 +125,33 @@ public static class FacetecEndpoints
         var responseBody = response.Body;
         var deviceLocationJson = ExtractDeviceLocationJson(requestPayload);
         _ = Task.Run(() => FinalizeJourneyAndSendCallbackAsync(appkey, responseBody, deviceLocationJson, scopeFactory, loggerFactory));
+    }
+
+    private static bool IsSuccessfulProviderResponse(JsonElement response, LivenessEngine engine)
+    {
+        if (engine == LivenessEngine.V10)
+        {
+            return response.TryGetProperty("valid", out var valid)
+                && valid.ValueKind is JsonValueKind.True or JsonValueKind.False
+                && valid.GetBoolean();
+        }
+
+        if (!response.TryGetProperty("codID", out var codId))
+        {
+            return false;
+        }
+
+        return codId.ValueKind switch
+        {
+            JsonValueKind.Number => codId.TryGetDouble(out var number) && number is >= 200 and < 300,
+            JsonValueKind.String => double.TryParse(
+                codId.GetString(),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var textNumber
+            ) && textNumber is >= 200 and < 300,
+            _ => false
+        };
     }
 
     private static async Task FinalizeJourneyAndSendCallbackAsync(

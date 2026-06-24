@@ -1,6 +1,5 @@
 import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { Subscription, switchMap, timer } from 'rxjs';
 import { FaceTecSDK } from "../../assets/core-sdk-v10/core-sdk/FaceTecSDK.js/FaceTecSDK";
 import { Config } from "../../assets/facetec-v10/Config";
 import { FaceTecInitializationError, type FaceTecSDKInstance, FaceTecSessionResult } from '../../assets/core-sdk-v10/core-sdk/FaceTecSDK.js/FaceTecPublicApi';
@@ -10,7 +9,7 @@ import { ThemeHelpers } from 'src/assets/facetec-v10/utilities/ThemeHelpers';
 import { DeveloperStatusMessages } from '../../assets/facetec-v10/utilities/DeveloperStatusMessages';
 import { Facetecv10UiService } from './facetec-v10-ui.service';
 import { AwfaceService } from '../awface/awface.service';
-import { AwfaceCompletionResult, AwfaceJourneySession } from '../awface/models';
+import { AwfaceJourneySession } from '../awface/models';
 
 @Component({
   selector: 'app-facetec-v10',
@@ -32,9 +31,8 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   private faceTecSDKInstance!: FaceTecSDKInstance;
   private themeHelpers!: ThemeHelpers;
   private sdkV10: any
-  private completionPolling?: Subscription;
   private readonly sessionCompletedHandler = (): void => {
-    this.ngZone.run(() => this.startCompletionPolling());
+    this.ngZone.run(() => this.navigateToCompletion());
   };
   private readonly sessionRejectedHandler = (): void => {
     this.ngZone.run(() => this.prepareRetry());
@@ -70,7 +68,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     await this.facetecv10UiService.formatUIForDevice();
 
     // Ajuste para carregar a localização pt-br
-    const module = await import('src/assets/core-sdk-v10/core-sdk-optional/FaceTecStrings.pt-br.js');
+    const module = await import('src/assets/10.0.42/core-sdk-optional/FaceTecStrings.pt-br.js');
     this.facetecStrings = module.default;
 
     await this.loadFaceTecV10();
@@ -82,7 +80,6 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     window.removeEventListener('awface:liveness-session-completed', this.sessionCompletedHandler);
     window.removeEventListener('awface:liveness-session-rejected', this.sessionRejectedHandler);
     window.removeEventListener('awface:liveness-session-interrupted', this.sessionInterruptedHandler);
-    this.completionPolling?.unsubscribe();
   }
 
   public showLiveness3D() {
@@ -131,8 +128,8 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   }
 
   private initializeFaceTecSDK = (): void => {
-    this.sdkV10.setResourceDirectory("../assets/core-sdk-v10/core-sdk/FaceTecSDK.js/resources");
-    this.sdkV10.setImagesDirectory("../assets/core-sdk-v10/core-sdk/FaceTec_images");
+    this.sdkV10.setResourceDirectory("../assets/10.0.42/core-sdk/FaceTecSDK.js/resources");
+    this.sdkV10.setImagesDirectory("../assets/10.0.42/core-sdk/FaceTec_images");
 
     this.sdkV10.initializeWithSessionRequest(Config.DeviceKeyIdentifier, new SessionRequestProcessor(),
       {
@@ -254,7 +251,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
 
   private async loadFaceTecV10(): Promise<void> {
     (window as any).FaceTecSDK = undefined;
-    await this.loadScript('assets/core-sdk-v10/core-sdk/FaceTecSDK.js/FaceTecSDK.js');
+    await this.loadScript('assets/10.0.42/core-sdk/FaceTecSDK.js/FaceTecSDK.js');
     this.sdkV10 = (window as any).FaceTecSDK;
 
     if (!this.sdkV10) {
@@ -265,50 +262,20 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     (window as any).FaceTecSDK = undefined;
   }
 
-  private startCompletionPolling(): void {
+  private navigateToCompletion(): void {
     const journeyId = this.activeSession?.id || this.awfaceService.getActiveJourneyId();
     if (!journeyId) {
-      this.saveAndNavigateToCompletion({
+      this.awfaceService.saveCompletionResult({
         status: 'FAILED',
         message: 'A prova de vida foi concluída, mas a jornada não foi encontrada para confirmar a comunicação final.',
       });
-      return;
+    } else {
+      this.awfaceService.saveCompletionResult({
+        status: 'PENDING',
+        message: 'A prova de vida foi enviada e está em processo de validação.',
+      });
     }
 
-    this.completionPolling?.unsubscribe();
-    let attempts = 0;
-
-    this.completionPolling = timer(0, 1000).pipe(
-      switchMap(() => this.awfaceService.getCompletionStatus(journeyId))
-    ).subscribe({
-      next: result => {
-        attempts += 1;
-        if (result.status === 'PENDING' && attempts < 60) {
-          return;
-        }
-
-        if (result.status === 'PENDING') {
-          this.saveAndNavigateToCompletion({
-            status: 'FAILED',
-            message: 'A prova de vida foi concluída, mas a comunicação final demorou mais que o esperado. Entre em contato com o administrador do sistema.',
-          });
-          return;
-        }
-
-        this.saveAndNavigateToCompletion(result);
-      },
-      error: () => {
-        this.saveAndNavigateToCompletion({
-          status: 'FAILED',
-          message: 'A prova de vida foi concluída, mas não foi possível consultar a comunicação final. Entre em contato com o administrador do sistema.',
-        });
-      },
-    });
-  }
-
-  private saveAndNavigateToCompletion(result: AwfaceCompletionResult): void {
-    this.completionPolling?.unsubscribe();
-    this.awfaceService.saveCompletionResult(result);
     this.router.navigateByUrl('/journey-completion');
   }
 }

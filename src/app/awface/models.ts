@@ -1,5 +1,7 @@
 export type AwfaceJourneyType = 'LIVENESS' | 'LIVENESS_FACE_BUREAU' | 'LIVENESS_FACE_BUREAU_DOCUMENT';
 
+export type AwfaceLivenessEngine = 'V9' | 'V10';
+
 export type AwfaceTenantStatus = 'ACTIVE' | 'BLOCKED' | 'CANCELLED';
 
 export type AwfaceTenantTheme = 'LIGHT' | 'DARK';
@@ -66,6 +68,7 @@ export interface AwfaceJourneySession {
   id: string;
   tenant: AwfaceTenant;
   journeyType: AwfaceJourneyType;
+  livenessEngine: AwfaceLivenessEngine;
   subject: AwfaceJourneySubject;
   status: 'CREATED' | 'CONSENT_ACCEPTED' | 'CONSENT_REFUSED' | 'APPKEY_CREATED' | 'LIVENESS_STARTED' | 'COMPLETED' | 'FAILED';
   appkey?: string;

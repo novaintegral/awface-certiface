@@ -14,6 +14,8 @@ import { FaceTecSDK as FaceTecSDKType } from 'src/assets/core-sdk/FaceTecSDK.js/
 import { SendDigitalCnhComponent } from './send-digital-cnh/send-digital-cnh.component';
 import { IproovComponent } from './iproov/iproov.component';
 import { FacetecV10Component } from './facetec-v10/facetec-v10.component';
+import { FacetecV9Component } from './facetec-v9/facetec-v9.component';
+import { JourneyEngineComponent } from './journey-engine/journey-engine.component';
 import { JourneyComponent } from './journey/journey.component';
 import { JourneyLaunchComponent } from './journey-launch/journey-launch.component';
 import { JourneyCompletionComponent } from './journey-completion/journey-completion.component';
@@ -32,6 +34,8 @@ import { AdminTenantsComponent } from './admin/admin-tenants.component';
     SenddocumentComponent,
     IproovComponent,
     FacetecV10Component,
+    FacetecV9Component,
+    JourneyEngineComponent,
     JourneyComponent,
     JourneyLaunchComponent,
     JourneyCompletionComponent,

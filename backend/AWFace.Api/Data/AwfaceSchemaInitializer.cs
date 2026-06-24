@@ -27,6 +27,7 @@ public sealed class AwfaceSchemaInitializer
 
             alter table awface_liveness_journey
                 add column if not exists appkey_created_at timestamptz,
+                add column if not exists liveness_engine varchar(3) not null default 'V10',
                 add column if not exists launch_token_hash text,
                 add column if not exists launch_expires_at timestamptz,
                 add column if not exists launch_consumed_at timestamptz,
@@ -96,6 +97,20 @@ public sealed class AwfaceSchemaInitializer
             alter table awface_liveness_face_asset
                 add column if not exists encryption_algorithm text not null default 'AES-256-GCM';
 
+            create table if not exists awface_liveness_appkey_history (
+                id uuid primary key default gen_random_uuid(),
+                journey_id uuid not null references awface_liveness_journey(id),
+                appkey text not null unique,
+                liveness_engine varchar(3) not null,
+                attempt integer not null,
+                issued_at timestamptz not null default now(),
+                superseded_at timestamptz,
+                unique (journey_id, attempt)
+            );
+
+            create index if not exists ix_awface_liveness_appkey_history_journey
+                on awface_liveness_appkey_history (journey_id, issued_at);
+
             create unique index if not exists ux_awface_liveness_journey_launch_token_hash
                 on awface_liveness_journey (launch_token_hash)
                 where launch_token_hash is not null;
@@ -122,6 +137,54 @@ public sealed class AwfaceSchemaInitializer
                 add column if not exists callback_oauth_token_url text,
                 add column if not exists callback_oauth_client_id text,
                 add column if not exists callback_oauth_client_secret_ciphertext text;
+            """,
+            cancellationToken
+        );
+        await ApplyMigrationAsync(
+            connection,
+            "202606240001_liveness_engine",
+            "Registra o engine FaceTec utilizado por cada jornada.",
+            """
+            alter table awface_liveness_journey
+                add column if not exists liveness_engine varchar(3) not null default 'V10';
+
+            update awface_liveness_journey
+            set liveness_engine = 'V10'
+            where liveness_engine is null or liveness_engine not in ('V9', 'V10');
+            """,
+            cancellationToken
+        );
+        await ApplyMigrationAsync(
+            connection,
+            "202606240002_liveness_appkey_history",
+            "Preserva todas as appkeys emitidas para diagnóstico das jornadas.",
+            """
+            create table if not exists awface_liveness_appkey_history (
+                id uuid primary key default gen_random_uuid(),
+                journey_id uuid not null references awface_liveness_journey(id),
+                appkey text not null unique,
+                liveness_engine varchar(3) not null,
+                attempt integer not null,
+                issued_at timestamptz not null default now(),
+                superseded_at timestamptz,
+                unique (journey_id, attempt)
+            );
+
+            create index if not exists ix_awface_liveness_appkey_history_journey
+                on awface_liveness_appkey_history (journey_id, issued_at);
+
+            insert into awface_liveness_appkey_history (
+                journey_id, appkey, liveness_engine, attempt, issued_at
+            )
+            select
+                id,
+                appkey,
+                liveness_engine,
+                1,
+                coalesce(appkey_created_at, updated_at, created_at)
+            from awface_liveness_journey
+            where appkey is not null
+            on conflict (appkey) do nothing;
             """,
             cancellationToken
         );
