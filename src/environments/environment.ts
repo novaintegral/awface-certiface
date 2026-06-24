@@ -7,8 +7,8 @@ export const environment = {
   apiUrl: 'https://hml.certiface.com.br',
   awfaceApiUrl: 'http://localhost:5000',
   awfaceAdminUser: {
-    email: 'admin@awface.local',
-    password: 'Awface@123',
+    email: 'tecnico@integral.com.br',
+    password: 'Intsis@1999',
   },
 
   DeviceKeyIdentifier: 'dF2CabwQ6OCLFJaV2QqZhP7OUErHv0uz',

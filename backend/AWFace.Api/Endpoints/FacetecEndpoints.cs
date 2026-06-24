@@ -25,7 +25,8 @@ public static class FacetecEndpoints
             if (response.StatusCode >= 400)
             {
                 logger.LogWarning(
-                    "Certiface process-request returned {StatusCode}. Payload keys: {PayloadKeys}. Body: {Body}",
+                    "Certiface process-request retornou {StatusCode}. Campos recebidos pelo AWFace: {PayloadKeys}. "
+                    + "Campos encaminhados ao provedor: appkey,requestBlob,userAgent. Body: {Body}",
                     response.StatusCode,
                     string.Join(",", payload.EnumerateObject().Select(item => item.Name)),
                     response.Body
@@ -114,13 +115,14 @@ public static class FacetecEndpoints
             var callbackResult = CreateCallbackResult(result);
             var deviceLocation = string.IsNullOrWhiteSpace(deviceLocationJson) ? null : JsonNode.Parse(deviceLocationJson);
 
-            using var certifaceResultDocument = await certiface.GetDocumentResultAsync(appkey, CancellationToken.None);
+            using var certifaceResultDocument = await certiface.GetDocumentResultUntilTerminalStatusAsync(appkey, CancellationToken.None);
             await repository.MarkJourneyCompletedAsync(journey.Id, certifaceResultDocument, deviceLocationJson, CancellationToken.None);
             await StoreFrontalFaceIfPresentAsync(journey, certifaceResultDocument.RootElement, repository, faceStorage, logger, CancellationToken.None);
 
+            var providerStatus = CertifaceResultParser.ExtractStatus(certifaceResultDocument.RootElement) ?? "Não informado";
             var callbackPayload = new
             {
-                status = "Completo",
+                status = providerStatus,
                 appkey,
                 journeyId = journey.Id,
                 tenantId = journey.Tenant.Id,
