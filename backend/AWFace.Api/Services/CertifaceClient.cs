@@ -11,9 +11,7 @@ namespace AWFace.Api.Services;
 public sealed class CertifaceClient
 {
     private const int MaxProcessRequestTransientRetries = 2;
-    private const int MaxDocumentResultAttempts = 3;
     private static readonly TimeSpan ProcessRequestRetryDelay = TimeSpan.FromMilliseconds(750);
-    private static readonly TimeSpan DocumentResultRetryDelay = TimeSpan.FromSeconds(5);
 
     private readonly HttpClient _httpClient;
     private readonly CertifaceOptions _options;
@@ -100,57 +98,6 @@ public sealed class CertifaceClient
         await EnsureSuccessOrThrowAsync(response, "document/result", cancellationToken);
 
         return await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-    }
-
-    public async Task<JsonDocument> GetDocumentResultUntilTerminalStatusAsync(
-        string appkey,
-        CancellationToken cancellationToken)
-    {
-        JsonDocument? latestResult = null;
-
-        try
-        {
-            for (var attempt = 1; attempt <= MaxDocumentResultAttempts; attempt++)
-            {
-                latestResult?.Dispose();
-                latestResult = await GetDocumentResultAsync(appkey, cancellationToken);
-
-                var status = CertifaceResultParser.ExtractStatus(latestResult.RootElement);
-                _logger.LogInformation(
-                    "Consulta document/result concluída. Tentativa {Attempt}/{MaxAttempts}; status={Status}.",
-                    attempt,
-                    MaxDocumentResultAttempts,
-                    status ?? "não informado"
-                );
-
-                if (CertifaceResultParser.IsTerminalStatus(status))
-                {
-                    return latestResult;
-                }
-
-                if (attempt < MaxDocumentResultAttempts)
-                {
-                    _logger.LogInformation(
-                        "Resultado Certiface ainda não está concluído. Nova consulta em {DelaySeconds} segundos.",
-                        DocumentResultRetryDelay.TotalSeconds
-                    );
-                    await Task.Delay(DocumentResultRetryDelay, cancellationToken);
-                }
-            }
-
-            _logger.LogWarning(
-                "Consulta document/result atingiu o limite de {MaxAttempts} tentativas sem status terminal. Último status={Status}.",
-                MaxDocumentResultAttempts,
-                CertifaceResultParser.ExtractStatus(latestResult!.RootElement) ?? "não informado"
-            );
-
-            return latestResult!;
-        }
-        catch
-        {
-            latestResult?.Dispose();
-            throw;
-        }
     }
 
     public async Task<CertifaceProxyResponse> Process3dRequestAsync(JsonElement payload, CancellationToken cancellationToken)

@@ -8,9 +8,15 @@ public sealed class AwfaceOptions
     public string FrontendBaseUrl { get; set; } = "http://localhost:4200";
     public int LivenessAppkeyLifetimeMinutes { get; set; } = 20;
     public LivenessEngine LivenessEngine { get; set; } = LivenessEngine.V10;
+    public HomologationOptions Homologation { get; set; } = new();
     public FaceStorageOptions FaceStorage { get; set; } = new();
     public AdminOptions Admin { get; set; } = new();
     public CorsOptions Cors { get; set; } = new();
+}
+
+public sealed class HomologationOptions
+{
+    public bool AcceptNonProcessedResultAfterCompleteNotification { get; set; }
 }
 
 public sealed class FaceStorageOptions

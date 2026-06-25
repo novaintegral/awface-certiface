@@ -75,6 +75,19 @@ O engine utilizado por novas jornadas é definido por `Awface:LivenessEngine`
 ou pela variável `AWFACE_LIVENESS_ENGINE` no Docker Compose. Valores aceitos:
 `V9` e `V10`. O valor é persistido na jornada para que alterações posteriores
 de ambiente não modifiquem processos já iniciados.
-- `POST /webhookliveness`
+- `POST /api/awface/webhooks/certiface`
+- `POST /webhookliveness` (alias legado)
+
+O webhook da Certiface recebe `Status` e `Appkey`. Somente os status
+`Completo` e `Erro` finalizam a jornada. Após essa notificação, o AWFace
+consulta `document/result`, persiste o resultado e dispara o webhook
+configurado no Tenant. Os endpoints de liveness V9/V10 não consultam mais
+`document/result` diretamente.
+
+Em homologação, a configuração
+`Awface:Homologation:AcceptNonProcessedResultAfterCompleteNotification=true`
+permite continuar quando a Certiface notificar `Completo`, mas
+`document/result` ainda responder `Não processado`. Esse recurso deve
+permanecer desativado em produção.
 
 O Angular em desenvolvimento aponta para `http://localhost:5000` por `environment.awfaceApiUrl`.

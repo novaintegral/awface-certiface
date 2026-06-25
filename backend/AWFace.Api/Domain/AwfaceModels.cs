@@ -103,3 +103,11 @@ public sealed record JourneyFaceAsset(
     string EncryptionAlgorithm,
     DateTimeOffset CreatedAt
 );
+
+public sealed record LivenessSubmission(
+    string Appkey,
+    LivenessEngine LivenessEngine,
+    string ProviderResponseJson,
+    string? DeviceLocationJson,
+    DateTimeOffset SubmittedAt
+);

@@ -111,6 +111,32 @@ public sealed class AwfaceSchemaInitializer
             create index if not exists ix_awface_liveness_appkey_history_journey
                 on awface_liveness_appkey_history (journey_id, issued_at);
 
+            create table if not exists awface_liveness_submission (
+                appkey text primary key,
+                journey_id uuid not null references awface_liveness_journey(id),
+                liveness_engine varchar(3) not null,
+                provider_response jsonb not null,
+                device_location jsonb,
+                submitted_at timestamptz not null default now(),
+                updated_at timestamptz not null default now()
+            );
+
+            create index if not exists ix_awface_liveness_submission_journey
+                on awface_liveness_submission (journey_id, submitted_at);
+
+            create table if not exists awface_provider_notification (
+                id uuid primary key default gen_random_uuid(),
+                journey_id uuid not null references awface_liveness_journey(id),
+                appkey text not null,
+                provider_status varchar(80) not null,
+                attempts integer not null default 1,
+                processing_started_at timestamptz,
+                processed_at timestamptz,
+                last_error text,
+                received_at timestamptz not null default now(),
+                unique (appkey)
+            );
+
             create unique index if not exists ux_awface_liveness_journey_launch_token_hash
                 on awface_liveness_journey (launch_token_hash)
                 where launch_token_hash is not null;
@@ -185,6 +211,42 @@ public sealed class AwfaceSchemaInitializer
             from awface_liveness_journey
             where appkey is not null
             on conflict (appkey) do nothing;
+            """,
+            cancellationToken
+        );
+        await ApplyMigrationAsync(
+            connection,
+            "202606240003_provider_completion_webhook",
+            "Armazena submissões de liveness e controla notificações terminais da Certiface.",
+            """
+            create table if not exists awface_liveness_submission (
+                appkey text primary key,
+                journey_id uuid not null references awface_liveness_journey(id),
+                liveness_engine varchar(3) not null,
+                provider_response jsonb not null,
+                device_location jsonb,
+                submitted_at timestamptz not null default now(),
+                updated_at timestamptz not null default now()
+            );
+
+            create index if not exists ix_awface_liveness_submission_journey
+                on awface_liveness_submission (journey_id, submitted_at);
+
+            create table if not exists awface_provider_notification (
+                id uuid primary key default gen_random_uuid(),
+                journey_id uuid not null references awface_liveness_journey(id),
+                appkey text not null,
+                provider_status varchar(80) not null,
+                attempts integer not null default 1,
+                processing_started_at timestamptz,
+                processed_at timestamptz,
+                last_error text,
+                received_at timestamptz not null default now(),
+                unique (appkey)
+            );
+
+            create unique index if not exists ux_awface_provider_notification_appkey
+                on awface_provider_notification (appkey);
             """,
             cancellationToken
         );

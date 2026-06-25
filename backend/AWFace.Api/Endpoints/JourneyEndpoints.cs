@@ -146,14 +146,17 @@ public static class JourneyEndpoints
                 });
             }
 
-            var success = callback.ResponseStatus is >= 200 and <= 299;
+            var providerFailed = journey.Status == JourneyStatus.FAILED;
+            var success = !providerFailed && callback.ResponseStatus is >= 200 and <= 299;
             return Results.Ok(new
             {
                 status = success ? "SUCCESS" : "FAILED",
                 callbackStatus = callback.ResponseStatus,
                 message = success
-                    ? "" //"Prova de vida concluída com sucesso."
-                    : "A prova de vida foi concluída, mas houve falha ao comunicar o sistema de assinatura.",
+                    ? ""
+                    : providerFailed
+                        ? "O provedor informou erro ao concluir a prova de vida."
+                        : "A prova de vida foi concluída, mas houve falha ao comunicar o sistema de assinatura.",
                 deliveredAt = callback.DeliveredAt
             });
         });

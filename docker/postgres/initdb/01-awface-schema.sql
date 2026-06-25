@@ -103,6 +103,32 @@ CREATE TABLE awface_liveness_appkey_history (
 CREATE INDEX ix_awface_liveness_appkey_history_journey
   ON awface_liveness_appkey_history (journey_id, issued_at);
 
+CREATE TABLE awface_liveness_submission (
+  appkey text PRIMARY KEY,
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  liveness_engine varchar(3) NOT NULL CHECK (liveness_engine IN ('V9', 'V10')),
+  provider_response jsonb NOT NULL,
+  device_location jsonb,
+  submitted_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_awface_liveness_submission_journey
+  ON awface_liveness_submission (journey_id, submitted_at);
+
+CREATE TABLE awface_provider_notification (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  appkey text NOT NULL,
+  provider_status varchar(80) NOT NULL,
+  attempts integer NOT NULL DEFAULT 1,
+  processing_started_at timestamptz,
+  processed_at timestamptz,
+  last_error text,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (appkey)
+);
+
 CREATE TABLE awface_liveness_consent (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),

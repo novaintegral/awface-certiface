@@ -106,7 +106,7 @@ export class JourneyCompletionComponent implements OnInit, OnDestroy {
     }
 
     this.completionPolling?.unsubscribe();
-    this.completionPolling = timer(0, 1000).pipe(
+    this.completionPolling = timer(0, 5000).pipe(
       switchMap(() => this.awfaceService.getCompletionStatus(journeyId).pipe(
         catchError(() => of<AwfaceCompletionResult | null>(null))
       ))

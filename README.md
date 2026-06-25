@@ -2,6 +2,12 @@
 
 # CertiFace para Angular
 
+## Documentação AWFace
+
+- [Arquitetura do AWFace](docs/awface-architecture.md)
+- [APIs públicas para aplicações Host](docs/awface-host-api.md)
+- [Registro técnico de 24/06/2026: engines, completion e webhook da Certiface](docs/2026-06-24-engines-completion-provider-webhook.md)
+
 Este repositório contém o processo de liveness em 2D, 3D, envio de documentos e guia rápido de atualização.
 
 Para visualizar a documentação de cada módulo, utilize os links abaixo:
