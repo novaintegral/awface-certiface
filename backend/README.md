@@ -30,6 +30,13 @@ Health check:
 GET http://localhost:5000/health
 ```
 
+Versão da release em execução:
+
+```text
+GET http://localhost:5000/version
+GET http://localhost:5000/api/awface/version
+```
+
 ## Logs
 
 A API grava logs em arquivo por padrão:
@@ -91,3 +98,9 @@ permite continuar quando a Certiface notificar `Completo`, mas
 permanecer desativado em produção.
 
 O Angular em desenvolvimento aponta para `http://localhost:5000` por `environment.awfaceApiUrl`.
+
+## Releases
+
+O arquivo `VERSION` na raiz é a fonte única da versão SemVer do AWFace.
+Consulte `docs/release-management.md` para preparar, validar, etiquetar e
+publicar uma release.

@@ -8,6 +8,7 @@ import {
   AwfaceTenant,
   AwfaceTenantStatus,
 } from '../awface/models';
+import { AWFACE_VERSION } from '../core/release-version';
 
 @Component({
   selector: 'app-admin-tenants',
@@ -15,6 +16,7 @@ import {
   styleUrls: ['./admin.component.scss'],
 })
 export class AdminTenantsComponent implements OnInit {
+  readonly awfaceVersion = AWFACE_VERSION;
   private readonly maxLogoSizeBytes = 256 * 1024;
 
   readonly journeyTypes = Object.entries(AWFACE_JOURNEY_LABELS).map(([value, label]) => ({

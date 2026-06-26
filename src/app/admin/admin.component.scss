@@ -12,6 +12,23 @@
   color: #17202a;
 }
 
+.release-version,
+.admin-release-footer {
+  color: #6c757d;
+  font-size: 0.75rem;
+}
+
+.release-version {
+  display: block;
+  margin-top: 1.25rem;
+  text-align: center;
+}
+
+.admin-release-footer {
+  padding-top: 1rem;
+  text-align: right;
+}
+
 .admin-container {
   max-width: 1320px;
   margin: 0 auto;

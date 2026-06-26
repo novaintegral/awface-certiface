@@ -40,6 +40,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<ILoggerProvider, FileLoggerProvider>();
 
 var app = builder.Build();
+var releaseInfo = ReleaseInfoProvider.Create(app.Environment);
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -53,8 +54,13 @@ app.MapGet("/health", () => Results.Ok(new
 {
     status = "ok",
     service = "AWFace.Api",
+    version = releaseInfo.Version,
+    commit = releaseInfo.Commit,
     utc = DateTimeOffset.UtcNow
 })).WithTags("Health");
+
+app.MapGet("/version", () => Results.Ok(releaseInfo)).WithTags("Release");
+app.MapGet("/api/awface/version", () => Results.Ok(releaseInfo)).WithTags("Release");
 
 app.MapAdminEndpoints();
 app.MapJourneyLaunchEndpoints();

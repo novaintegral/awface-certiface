@@ -1,0 +1,66 @@
+name: Validate AWFace release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag
+        shell: bash
+        run: |
+          VERSION="$(tr -d '\r\n' < VERSION)"
+          test "v${VERSION}" = "${GITHUB_REF_NAME}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Validate version files
+        run: npm run version:verify
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Build API
+        run: dotnet publish backend/AWFace.Api/AWFace.Api.csproj -c Release -o dist/awface-api
+
+      - name: Validate Docker Compose
+        env:
+          AWFACE_VERSION: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          export AWFACE_VERSION="${AWFACE_VERSION#v}"
+          docker compose config --quiet
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: awface-front-${{ github.ref_name }}
+          path: dist/facetec-demo-app
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: awface-api-${{ github.ref_name }}
+          path: dist/awface-api

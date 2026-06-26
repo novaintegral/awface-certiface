@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { Router } from '@angular/router';
 import { AwfaceService } from '../awface/awface.service';
+import { AWFACE_VERSION } from '../core/release-version';
 
 @Component({
   selector: 'app-admin-login',
@@ -8,6 +9,7 @@ import { AwfaceService } from '../awface/awface.service';
   styleUrls: ['./admin.component.scss'],
 })
 export class AdminLoginComponent {
+  readonly awfaceVersion = AWFACE_VERSION;
   email = '';
   password = '';
   error = '';

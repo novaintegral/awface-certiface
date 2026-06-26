@@ -1,12 +1,18 @@
 {
-  "name": "liveness-angular-example",
-  "version": "0.0.0",
+  "name": "awface",
+  "version": "1.0.0",
   "scripts": {
     "ng": "ng",
+    "prestart": "npm run version:verify",
     "start": "ng serve",
+    "prebuild": "npm run version:verify",
     "build": "ng build",
+    "prewatch": "npm run version:verify",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "pretest": "npm run version:verify",
+    "test": "ng test",
+    "version:verify": "node scripts/verify-version.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs"
   },
   "private": true,
   "dependencies": {

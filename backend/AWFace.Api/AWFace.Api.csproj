@@ -4,6 +4,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <VersionFile>$(MSBuildThisFileDirectory)../../VERSION</VersionFile>
+    <Version Condition="'$(Version)' == ''">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</Version>
+    <RepositoryUrl>https://github.com/novaintegral/awface-certiface</RepositoryUrl>
+    <Product>AWFace</Product>
+    <Description>AWFace liveness orchestration API</Description>
   </PropertyGroup>
 
   <ItemGroup>
