@@ -9,6 +9,7 @@ import {
 export interface FacetecV9ProcessorEvents {
   completed(): void;
   rejected(): void;
+  blocked(): void;
   interrupted(): void;
   failed(message: string): void;
 }
@@ -68,9 +69,15 @@ export class FacetecV9Processor implements FaceTecFaceScanProcessor {
         const response = JSON.parse(this.request.responseText);
         const codId = Number(response.codID);
 
-        if (codId === 300.1 || codId === 300.2) {
+        if (codId === 300.1) {
           callback.cancel();
           this.events.rejected();
+          return;
+        }
+
+        if (codId === 300.2) {
+          callback.cancel();
+          this.events.blocked();
           return;
         }
 

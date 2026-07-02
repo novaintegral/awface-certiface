@@ -124,6 +124,19 @@ public sealed class AwfaceSchemaInitializer
             create index if not exists ix_awface_liveness_submission_journey
                 on awface_liveness_submission (journey_id, submitted_at);
 
+            create table if not exists awface_liveness_attempt_history (
+                id uuid primary key default gen_random_uuid(),
+                journey_id uuid not null references awface_liveness_journey(id),
+                appkey text not null,
+                liveness_engine varchar(3) not null,
+                event_type text not null,
+                provider_response jsonb not null,
+                device_location jsonb,
+                created_at timestamptz not null default now()
+            );
+
+            create index if not exists ix_awface_liveness_attempt_history_journey
+                on awface_liveness_attempt_history (journey_id, created_at);
             create table if not exists awface_provider_notification (
                 id uuid primary key default gen_random_uuid(),
                 journey_id uuid not null references awface_liveness_journey(id),
@@ -156,7 +169,7 @@ public sealed class AwfaceSchemaInitializer
         await ApplyMigrationAsync(
             connection,
             "202606180001_tenant_callback_oauth",
-            "Adiciona autenticação OAuth2 ao webhook do tenant.",
+            "Adiciona autenticaÃ§Ã£o OAuth2 ao webhook do tenant.",
             """
             alter table awface_tenant
                 add column if not exists callback_oauth_enabled boolean not null default false,
@@ -183,7 +196,7 @@ public sealed class AwfaceSchemaInitializer
         await ApplyMigrationAsync(
             connection,
             "202606240002_liveness_appkey_history",
-            "Preserva todas as appkeys emitidas para diagnóstico das jornadas.",
+            "Preserva todas as appkeys emitidas para diagnÃ³stico das jornadas.",
             """
             create table if not exists awface_liveness_appkey_history (
                 id uuid primary key default gen_random_uuid(),
@@ -217,7 +230,7 @@ public sealed class AwfaceSchemaInitializer
         await ApplyMigrationAsync(
             connection,
             "202606240003_provider_completion_webhook",
-            "Armazena submissões de liveness e controla notificações terminais da Certiface.",
+            "Armazena submissÃµes de liveness e controla notificaÃ§Ãµes terminais da Certiface.",
             """
             create table if not exists awface_liveness_submission (
                 appkey text primary key,
@@ -232,6 +245,19 @@ public sealed class AwfaceSchemaInitializer
             create index if not exists ix_awface_liveness_submission_journey
                 on awface_liveness_submission (journey_id, submitted_at);
 
+            create table if not exists awface_liveness_attempt_history (
+                id uuid primary key default gen_random_uuid(),
+                journey_id uuid not null references awface_liveness_journey(id),
+                appkey text not null,
+                liveness_engine varchar(3) not null,
+                event_type text not null,
+                provider_response jsonb not null,
+                device_location jsonb,
+                created_at timestamptz not null default now()
+            );
+
+            create index if not exists ix_awface_liveness_attempt_history_journey
+                on awface_liveness_attempt_history (journey_id, created_at);
             create table if not exists awface_provider_notification (
                 id uuid primary key default gen_random_uuid(),
                 journey_id uuid not null references awface_liveness_journey(id),
@@ -251,6 +277,27 @@ public sealed class AwfaceSchemaInitializer
             cancellationToken
         );
 
+        await ApplyMigrationAsync(
+            connection,
+            "202607020001_liveness_attempt_history",
+            "Preserva historico append-only dos retornos do SDK liveness por jornada.",
+            """
+            create table if not exists awface_liveness_attempt_history (
+                id uuid primary key default gen_random_uuid(),
+                journey_id uuid not null references awface_liveness_journey(id),
+                appkey text not null,
+                liveness_engine varchar(3) not null,
+                event_type text not null,
+                provider_response jsonb not null,
+                device_location jsonb,
+                created_at timestamptz not null default now()
+            );
+
+            create index if not exists ix_awface_liveness_attempt_history_journey
+                on awface_liveness_attempt_history (journey_id, created_at);
+            """,
+            cancellationToken
+        );
         _logger.LogInformation("Schema AWFace verificado e migrations aplicadas.");
     }
 

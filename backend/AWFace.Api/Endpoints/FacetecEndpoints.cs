@@ -44,7 +44,7 @@ public static class FacetecEndpoints
             var response = await certiface.ProcessV9LivenessAsync(payload, cancellationToken);
 
             LogProviderFailure(response, payload, "V9 liveness", logger);
-            await RegisterPendingCompletionIfNeededAsync(
+            await RegisterCompletionOrRejectionAsync(
                 payload,
                 response,
                 LivenessEngine.V9,
@@ -70,7 +70,7 @@ public static class FacetecEndpoints
         var response = await certiface.Process3dRequestAsync(payload, cancellationToken);
 
         LogProviderFailure(response, payload, "V10 process-request", logger);
-        await RegisterPendingCompletionIfNeededAsync(
+        await RegisterCompletionOrRejectionAsync(
             payload,
             response,
             LivenessEngine.V10,
@@ -102,7 +102,7 @@ public static class FacetecEndpoints
         );
     }
 
-    private static async Task RegisterPendingCompletionIfNeededAsync(
+    private static async Task RegisterCompletionOrRejectionAsync(
         JsonElement requestPayload,
         CertifaceProxyResponse response,
         LivenessEngine engine,
@@ -110,13 +110,7 @@ public static class FacetecEndpoints
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        if (response.StatusCode != StatusCodes.Status200OK || string.IsNullOrWhiteSpace(response.Body))
-        {
-            return;
-        }
-
-        using var responseDocument = JsonDocument.Parse(response.Body);
-        if (!IsSuccessfulProviderResponse(responseDocument.RootElement, engine))
+        if (response.StatusCode != StatusCodes.Status200OK)
         {
             return;
         }
@@ -124,7 +118,7 @@ public static class FacetecEndpoints
         if (!requestPayload.TryGetProperty("appkey", out var appkeyElement)
             || string.IsNullOrWhiteSpace(appkeyElement.GetString()))
         {
-            logger.LogWarning("Resposta FaceTec {Engine} concluída sem appkey no payload AWFace.", engine);
+            logger.LogWarning("Resposta FaceTec {Engine} concluida sem appkey no payload AWFace.", engine);
             return;
         }
 
@@ -133,8 +127,29 @@ public static class FacetecEndpoints
         if (journey is null)
         {
             logger.LogWarning(
-                "Resposta FaceTec {Engine} válida não foi associada a uma jornada AWFace. Appkey não encontrada.",
+                "Resposta FaceTec {Engine} nao foi associada a uma jornada AWFace. Appkey nao encontrada.",
                 engine
+            );
+            return;
+        }
+
+        var deviceLocationJson = ExtractDeviceLocationJson(requestPayload);
+        if (IsInvalidLivenessResponse(response.Body))
+        {
+            await repository.RegisterRejectedLivenessAsync(
+                journey.Id,
+                appkey,
+                engine,
+                response.Body,
+                deviceLocationJson,
+                cancellationToken
+            );
+
+            logger.LogInformation(
+                "Resposta FaceTec {Engine} 300.1 registrada para JourneyId {JourneyId}. "
+                + "A jornada permanecera apta para retentativa sem consultar document/result.",
+                engine,
+                journey.Id
             );
             return;
         }
@@ -143,42 +158,54 @@ public static class FacetecEndpoints
             journey.Id,
             appkey,
             engine,
-            response.Body,
-            ExtractDeviceLocationJson(requestPayload),
+            "{}",
+            deviceLocationJson,
             cancellationToken
         );
 
         logger.LogInformation(
-            "Submissão FaceTec {Engine} registrada para JourneyId {JourneyId}. "
-            + "Aguardando webhook terminal da Certiface antes de consultar document/result.",
+            "Tentativa FaceTec {Engine} registrada para JourneyId {JourneyId}. "
+            + "O resultado da jornada sera persistido somente apos webhook Certiface e consulta ao document/result para codID 200 ou 300.2.",
             engine,
             journey.Id
         );
     }
 
-    private static bool IsSuccessfulProviderResponse(JsonElement response, LivenessEngine engine)
+    private static bool IsInvalidLivenessResponse(string? responseBody)
     {
-        if (engine == LivenessEngine.V10)
-        {
-            return response.TryGetProperty("valid", out var valid)
-                && valid.ValueKind is JsonValueKind.True or JsonValueKind.False
-                && valid.GetBoolean();
-        }
-
-        if (!response.TryGetProperty("codID", out var codId))
+        if (string.IsNullOrWhiteSpace(responseBody))
         {
             return false;
         }
 
-        return codId.ValueKind switch
+        try
         {
-            JsonValueKind.Number => codId.TryGetDouble(out var number) && number is >= 200 and < 300,
+            using var document = JsonDocument.Parse(responseBody);
+            return TryGetCodId(document.RootElement, out var codId) && codId == 300.1d;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetCodId(JsonElement response, out double codId)
+    {
+        codId = 0;
+        if (!response.TryGetProperty("codID", out var codIdElement))
+        {
+            return false;
+        }
+
+        return codIdElement.ValueKind switch
+        {
+            JsonValueKind.Number => codIdElement.TryGetDouble(out codId),
             JsonValueKind.String => double.TryParse(
-                codId.GetString(),
+                codIdElement.GetString(),
                 System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture,
-                out var textNumber
-            ) && textNumber is >= 200 and < 300,
+                out codId
+            ),
             _ => false
         };
     }

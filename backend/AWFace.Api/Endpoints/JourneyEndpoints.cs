@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using AWFace.Api.Contracts;
 using AWFace.Api.Configuration;
 using AWFace.Api.Data;
@@ -29,7 +31,7 @@ public static class JourneyEndpoints
             var tenant = await repository.GetTenantByTokenAsync(request.IntegrationToken, cancellationToken);
             if (tenant is null)
             {
-                return Results.BadRequest(new[] { new { field = "integrationToken", message = "Token de integração não encontrado." } });
+                return Results.BadRequest(new[] { new { field = "integrationToken", message = "Token de integraÃƒÂ§ÃƒÂ£o nÃƒÂ£o encontrado." } });
             }
 
             if (tenant.Status != TenantStatus.ACTIVE)
@@ -39,7 +41,7 @@ public static class JourneyEndpoints
 
             if (!tenant.Credentials.Any(item => item.JourneyType == request.JourneyType))
             {
-                return Results.BadRequest(new[] { new { field = "journeyType", message = "Tipo de jornada não habilitado para este tenant." } });
+                return Results.BadRequest(new[] { new { field = "journeyType", message = "Tipo de jornada nÃƒÂ£o habilitado para este tenant." } });
             }
 
             var userAgent = httpContext.Request.Headers.UserAgent.ToString();
@@ -91,18 +93,21 @@ public static class JourneyEndpoints
                 return Results.NotFound();
             }
 
-            if (journey.Status != JourneyStatus.CONSENT_ACCEPTED && journey.Status != JourneyStatus.APPKEY_CREATED)
-            {
-                return Results.BadRequest(new { message = "A jornada precisa de consentimento aceito antes da criação da appkey." });
-            }
-
             var appkeyLifetime = TimeSpan.FromMinutes(Math.Max(1, options.Value.LivenessAppkeyLifetimeMinutes));
             var reusableAppkey = force == true
                 ? null
                 : await repository.GetReusableAppkeyAsync(journeyId, appkeyLifetime, cancellationToken);
             if (!string.IsNullOrWhiteSpace(reusableAppkey))
             {
+                await repository.ReactivateJourneyAppkeyAsync(journeyId, cancellationToken);
                 return Results.Ok(new AppkeyResponse(reusableAppkey));
+            }
+
+            var hasAcceptedConsent = journey.ConsentAt is not null
+                || await repository.HasAcceptedConsentAsync(journeyId, cancellationToken);
+            if (!CanIssueAppkey(journey, hasAcceptedConsent))
+            {
+                return Results.BadRequest(new { message = "A jornada precisa estar ativa e com consentimento aceito antes da criacao da appkey." });
             }
 
             try
@@ -116,7 +121,7 @@ public static class JourneyEndpoints
                 return Results.Json(
                     new
                     {
-                        message = "Não foi possível obter a appkey na Certiface.",
+                        message = "NÃƒÂ£o foi possÃƒÂ­vel obter a appkey na Certiface.",
                         providerOperation = exception.Operation,
                         providerStatus = exception.StatusCode
                     },
@@ -128,6 +133,9 @@ public static class JourneyEndpoints
         group.MapGet("/{journeyId:guid}/completion", async (
             Guid journeyId,
             AwfaceRepository repository,
+            CertifaceClient certiface,
+            TenantWebhookClient webhookClient,
+            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
@@ -136,13 +144,49 @@ public static class JourneyEndpoints
                 return Results.NotFound();
             }
 
+            var currentSubmission = string.IsNullOrWhiteSpace(journey.Appkey)
+                ? null
+                : await repository.GetLivenessSubmissionAsync(journey.Appkey, cancellationToken);
             var callback = await repository.GetLatestCallbackDeliveryAsync(journeyId, cancellationToken);
+            if (callback is not null
+                && currentSubmission is not null
+                && callback.DeliveredAt <= currentSubmission.SubmittedAt)
+            {
+                callback = null;
+            }
+
+            if (callback is null && journey.Status == JourneyStatus.COMPLETED)
+            {
+                var completionResult = await TryDispatchTenantCallbackAfterProviderCompletionAsync(
+                    journey,
+                    repository,
+                    certiface,
+                    webhookClient,
+                    loggerFactory,
+                    cancellationToken
+                );
+
+                if (completionResult is not null)
+                {
+                    return completionResult;
+                }
+            }
+
             if (callback is null)
             {
+                var pendingMessage = "A prova de vida foi enviada e esta em processo de validacao.";
+                if (!string.IsNullOrWhiteSpace(journey.Appkey))
+                {
+                    if (IsBlockedLivenessSubmission(currentSubmission))
+                    {
+                        pendingMessage = "Usuario bloqueado pelo provedor de liveness. Aguardando a confirmacao final da validacao.";
+                    }
+                }
+
                 return Results.Ok(new
                 {
                     status = "PENDING",
-                    message = "A prova de vida foi enviada e está em processo de validação."
+                    message = pendingMessage
                 });
             }
 
@@ -156,7 +200,7 @@ public static class JourneyEndpoints
                     ? ""
                     : providerFailed
                         ? "O provedor informou erro ao concluir a prova de vida."
-                        : "A prova de vida foi concluída, mas houve falha ao comunicar o sistema de assinatura.",
+                        : "A prova de vida foi concluÃƒÂ­da, mas houve falha ao comunicar o sistema de assinatura.",
                 deliveredAt = callback.DeliveredAt
             });
         });
@@ -197,7 +241,7 @@ public static class JourneyEndpoints
             var journey = authorization.Journey!;
             if (string.IsNullOrWhiteSpace(journey.Appkey))
             {
-                return Results.BadRequest(new { message = "A jornada ainda não possui appkey para consulta do resultado." });
+                return Results.BadRequest(new { message = "A jornada ainda nÃƒÂ£o possui appkey para consulta do resultado." });
             }
 
             try
@@ -210,7 +254,7 @@ public static class JourneyEndpoints
                 return Results.Json(
                     new
                     {
-                        message = "Não foi possível consultar o resultado da prova de vida na Certiface.",
+                        message = "NÃƒÂ£o foi possÃƒÂ­vel consultar o resultado da prova de vida na Certiface.",
                         providerOperation = exception.Operation,
                         providerStatus = exception.StatusCode
                     },
@@ -235,13 +279,13 @@ public static class JourneyEndpoints
             var faceAsset = await repository.GetJourneyFaceAssetAsync(journeyId, "FRONTAL", cancellationToken);
             if (faceAsset is null)
             {
-                return Results.NotFound(new { message = "Imagem da face não encontrada para esta jornada." });
+                return Results.NotFound(new { message = "Imagem da face nÃƒÂ£o encontrada para esta jornada." });
             }
 
             var faceContent = await faceStorage.ReadAsync(faceAsset.StorageKey, faceAsset.ContentType, cancellationToken);
             if (faceContent is null)
             {
-                return Results.NotFound(new { message = "Arquivo da imagem da face não encontrado no storage AWFace." });
+                return Results.NotFound(new { message = "Arquivo da imagem da face nÃƒÂ£o encontrado no storage AWFace." });
             }
 
             var imageBase64 = Convert.ToBase64String(faceContent.Bytes);
@@ -275,13 +319,13 @@ public static class JourneyEndpoints
             var faceAsset = await repository.GetJourneyFaceAssetAsync(journeyId, "FRONTAL", cancellationToken);
             if (faceAsset is null)
             {
-                return Results.NotFound(new { message = "Imagem da face não encontrada para esta jornada." });
+                return Results.NotFound(new { message = "Imagem da face nÃƒÂ£o encontrada para esta jornada." });
             }
 
             var faceContent = await faceStorage.ReadAsync(faceAsset.StorageKey, faceAsset.ContentType, cancellationToken);
             if (faceContent is null)
             {
-                return Results.NotFound(new { message = "Arquivo da imagem da face não encontrado no storage AWFace." });
+                return Results.NotFound(new { message = "Arquivo da imagem da face nÃƒÂ£o encontrado no storage AWFace." });
             }
 
             var extension = faceAsset.ContentType == "image/png" ? "png" : "jpg";
@@ -293,6 +337,169 @@ public static class JourneyEndpoints
         });
 
         return app;
+    }
+
+    private static async Task<IResult?> TryDispatchTenantCallbackAfterProviderCompletionAsync(
+        JourneySession journey,
+        AwfaceRepository repository,
+        CertifaceClient certiface,
+        TenantWebhookClient webhookClient,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("AWFace.Journey.Completion");
+        if (string.IsNullOrWhiteSpace(journey.Appkey))
+        {
+            return null;
+        }
+
+        var submission = await repository.GetLivenessSubmissionAsync(journey.Appkey, cancellationToken);
+        if (submission is null)
+        {
+            logger.LogWarning(
+                "Jornada {JourneyId} concluida pelo provedor, mas sem submissao de liveness registrada para disparar webhook do Tenant.",
+                journey.Id
+            );
+            return null;
+        }
+
+        try
+        {
+            using var result = await certiface.GetDocumentResultAsync(journey.Appkey, cancellationToken);
+            var providerStatus = CertifaceResultParser.ExtractStatus(result.RootElement) ?? "Completo";
+            var callbackPayload = new
+            {
+                status = providerStatus,
+                appkey = journey.Appkey,
+                journeyId = journey.Id,
+                tenantId = journey.Tenant.Id,
+                idExternoCliente = journey.Subject.ExternalClientId,
+                deviceLocation = ParseJsonNode(submission.DeviceLocationJson),
+                result = CreateCallbackResult(result.RootElement)
+            };
+
+            var callbackStatus = (int?)null;
+            var callbackResponseBody = (string?)null;
+            var callbackDelivered = false;
+
+            try
+            {
+                var callbackResponse = await webhookClient.SendAsync(
+                    journey.Tenant,
+                    callbackPayload,
+                    cancellationToken
+                );
+                callbackStatus = callbackResponse.StatusCode;
+                callbackResponseBody = callbackResponse.ResponseBody;
+                callbackDelivered = callbackResponse.Delivered;
+            }
+            catch (Exception exception)
+            {
+                callbackResponseBody = exception.Message;
+                logger.LogError(
+                    exception,
+                    "Falha ao enviar webhook do Tenant via polling de completion. JourneyId {JourneyId}.",
+                    journey.Id
+                );
+            }
+
+            await repository.RegisterCallbackDeliveryAsync(
+                journey.Id,
+                journey.Tenant.CallbackUrl,
+                callbackPayload,
+                callbackStatus,
+                callbackResponseBody,
+                cancellationToken
+            );
+
+            logger.LogInformation(
+                "Webhook do Tenant disparado via polling de completion para JourneyId {JourneyId}. entregue={Delivered}, status={CallbackStatus}.",
+                journey.Id,
+                callbackDelivered,
+                callbackStatus
+            );
+
+            var success = callbackStatus is >= 200 and <= 299;
+            return Results.Ok(new
+            {
+                status = success ? "SUCCESS" : "FAILED",
+                callbackStatus,
+                message = success
+                    ? ""
+                    : "A prova de vida foi concluida, mas houve falha ao comunicar o sistema de assinatura.",
+                deliveredAt = DateTimeOffset.UtcNow
+            });
+        }
+        catch (CertifaceProviderException exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Jornada {JourneyId} concluida pelo provedor, mas document/result ainda nao respondeu para o polling de completion.",
+                journey.Id
+            );
+            return null;
+        }
+    }
+
+    private static JsonNode? ParseJsonNode(string? json)
+    {
+        return string.IsNullOrWhiteSpace(json) || json == "null" ? null : JsonNode.Parse(json);
+    }
+
+    private static JsonNode? CreateCallbackResult(JsonElement result)
+    {
+        var resultNode = JsonNode.Parse(result.GetRawText());
+        if (resultNode is JsonObject resultObject)
+        {
+            resultObject.Remove("responseBlob");
+        }
+
+        return resultNode;
+    }
+    private static bool IsBlockedLivenessSubmission(LivenessSubmission? submission)
+    {
+        if (submission is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(submission.ProviderResponseJson);
+            return TryGetCodId(document.RootElement, out var codId) && codId == 300.2d;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetCodId(JsonElement response, out double codId)
+    {
+        codId = 0;
+        if (!response.TryGetProperty("codID", out var codIdElement))
+        {
+            return false;
+        }
+
+        return codIdElement.ValueKind switch
+        {
+            JsonValueKind.Number => codIdElement.TryGetDouble(out codId),
+            JsonValueKind.String => double.TryParse(
+                codIdElement.GetString(),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out codId
+            ),
+            _ => false
+        };
+    }
+
+    private static bool CanIssueAppkey(JourneySession journey, bool hasAcceptedConsent)
+    {
+        return hasAcceptedConsent
+            && journey.Status is not JourneyStatus.CONSENT_REFUSED
+            && journey.Status is not JourneyStatus.COMPLETED;
     }
 
     private static async Task<HostJourneyAuthorization> AuthorizeHostJourneyAsync(

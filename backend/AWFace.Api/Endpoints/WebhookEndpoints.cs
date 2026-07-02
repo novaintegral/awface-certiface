@@ -1,11 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using AWFace.Api.Configuration;
 using AWFace.Api.Contracts;
 using AWFace.Api.Data;
 using AWFace.Api.Domain;
 using AWFace.Api.Services;
-using Microsoft.Extensions.Options;
 
 namespace AWFace.Api.Endpoints;
 
@@ -15,11 +13,11 @@ public static class WebhookEndpoints
     {
         app.MapPost("/api/awface/webhooks/certiface", HandleCertifaceWebhookAsync)
             .WithTags("AWFace Webhooks")
-            .WithDescription("Recebe a notificação terminal da Certiface e finaliza a jornada AWFace.");
+            .WithDescription("Recebe a notificacao do provedor Certiface, registra o status recebido e finaliza a jornada AWFace.");
 
         app.MapPost("/webhookliveness", HandleCertifaceWebhookAsync)
             .WithTags("AWFace Webhooks")
-            .WithDescription("Alias legado do webhook terminal da Certiface.");
+            .WithDescription("Alias legado do webhook da Certiface.");
 
         return app;
     }
@@ -30,95 +28,143 @@ public static class WebhookEndpoints
         CertifaceClient certiface,
         FaceAssetStorage faceStorage,
         TenantWebhookClient webhookClient,
-        IOptions<AwfaceOptions> options,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("AWFace.Certiface.Webhook");
-        var providerStatus = request.Status?.Trim();
+        var providerStatus = string.IsNullOrWhiteSpace(request.Status) ? "Nao informado" : request.Status.Trim();
         var appkey = request.Appkey?.Trim();
-
-        if (!CertifaceResultParser.IsTerminalStatus(providerStatus))
-        {
-            logger.LogWarning(
-                "Webhook Certiface ignorado porque o status não é terminal. Status={Status}.",
-                providerStatus ?? "não informado"
-            );
-            return Results.Accepted(value: new
-            {
-                received = true,
-                processed = false,
-                message = "Somente os status Completo ou Erro finalizam a jornada."
-            });
-        }
 
         if (string.IsNullOrWhiteSpace(appkey))
         {
-            return Results.BadRequest(new { message = "Appkey não informada." });
+            return Results.BadRequest(new { received = false, message = "Appkey nao informada." });
         }
 
         var journey = await repository.GetJourneyByAppkeyAsync(appkey, cancellationToken);
         if (journey is null)
         {
-            logger.LogWarning("Webhook Certiface recebido para appkey não associada ao AWFace.");
-            return Results.NotFound(new { message = "Appkey não associada a uma jornada AWFace." });
+            logger.LogWarning("Webhook Certiface recebido para appkey nao associada ao AWFace.");
+            return Results.NotFound(new { received = false, message = "Appkey nao associada a uma jornada AWFace." });
+        }
+
+        if (!string.Equals(journey.Appkey, appkey, StringComparison.Ordinal))
+        {
+            logger.LogInformation(
+                "Webhook Certiface ignorado para appkey supersedida. JourneyId {JourneyId}, Status={Status}.",
+                journey.Id,
+                providerStatus
+            );
+            return Results.Accepted(value: new
+            {
+                received = true,
+                superseded = true,
+                message = "A appkey notificada nao e mais a appkey ativa da jornada."
+            });
         }
 
         var notificationId = await repository.TryBeginProviderNotificationAsync(
             journey.Id,
             appkey,
-            providerStatus!,
+            providerStatus,
             cancellationToken
         );
         if (notificationId is null)
         {
             logger.LogInformation(
-                "Webhook Certiface duplicado ou já em processamento para JourneyId {JourneyId}, status {Status}.",
+                "Webhook Certiface duplicado ou ja em processamento para JourneyId {JourneyId}, status {Status}.",
                 journey.Id,
                 providerStatus
             );
-            return Results.Ok(new { received = true, processed = false, duplicate = true });
+            return Results.Ok(new { received = true, duplicate = true });
         }
 
         try
         {
             var submission = await repository.GetLivenessSubmissionAsync(appkey, cancellationToken);
-            if (submission is null)
+            if (TryParseSubmissionResult(submission, out var immediateResult)
+                && CertifaceResultParser.ExtractCodId(immediateResult.RootElement) == 300.1d)
             {
-                throw new InvalidOperationException(
-                    $"A jornada {journey.Id} não possui uma submissão de liveness registrada."
+                await repository.ReactivateJourneyAppkeyAsync(journey.Id, cancellationToken);
+
+                var retryCallbackPayload = new
+                {
+                    status = providerStatus,
+                    appkey,
+                    journeyId = journey.Id,
+                    tenantId = journey.Tenant.Id,
+                    idExternoCliente = journey.Subject.ExternalClientId,
+                    retryAllowed = true,
+                    deviceLocation = ParseJsonNode(submission?.DeviceLocationJson),
+                    result = CreateCallbackResult(immediateResult.RootElement)
+                };
+                var retryCallbackStatus = (int?)null;
+                var retryCallbackResponseBody = (string?)null;
+                var retryCallbackDelivered = false;
+
+                try
+                {
+                    var callbackResponse = await webhookClient.SendAsync(
+                        journey.Tenant,
+                        retryCallbackPayload,
+                        cancellationToken
+                    );
+                    retryCallbackStatus = callbackResponse.StatusCode;
+                    retryCallbackResponseBody = callbackResponse.ResponseBody;
+                    retryCallbackDelivered = callbackResponse.Delivered;
+                }
+                catch (Exception exception)
+                {
+                    retryCallbackResponseBody = exception.Message;
+                    logger.LogError(
+                        exception,
+                        "Falha ao enviar webhook do Tenant para prova de vida invalida. JourneyId {JourneyId}.",
+                        journey.Id
+                    );
+                }
+
+                await repository.RegisterCallbackDeliveryAsync(
+                    journey.Id,
+                    journey.Tenant.CallbackUrl,
+                    retryCallbackPayload,
+                    retryCallbackStatus,
+                    retryCallbackResponseBody,
+                    cancellationToken
                 );
+                await repository.CompleteProviderNotificationAsync(notificationId.Value, cancellationToken);
+                var immediateCodId = CertifaceResultParser.ExtractCodId(immediateResult.RootElement) ?? 300.1d;
+
+                logger.LogInformation(
+                    "Webhook Certiface recebido como prova de vida invalida com retentativa permitida. JourneyId {JourneyId}, StatusProvider={ProviderStatus}, CodID={CodId}, callbackTenantEntregue={Delivered}, callbackStatus={CallbackStatus}.",
+                    journey.Id,
+                    providerStatus,
+                    immediateCodId,
+                    retryCallbackDelivered,
+                    retryCallbackStatus
+                );
+
+                immediateResult.Dispose();
+
+                return Results.Ok(new
+                {
+                    received = true,
+                    retryAllowed = true,
+                    codID = immediateCodId,
+                    callbackDelivered = retryCallbackDelivered,
+                    callbackStatus = retryCallbackStatus,
+                    providerStatus
+                });
             }
 
             using var result = await certiface.GetDocumentResultAsync(appkey, cancellationToken);
-            var resultStatus = CertifaceResultParser.ExtractStatus(result.RootElement);
-            var homologationOverride = ShouldAcceptHomologationResult(
-                providerStatus!,
-                resultStatus,
-                options.Value
-            );
-            if (!CertifaceResultParser.IsTerminalStatus(resultStatus) && !homologationOverride)
-            {
-                throw new InvalidOperationException(
-                    $"A Certiface notificou status '{providerStatus}', mas document/result retornou '{resultStatus ?? "não informado"}'."
-                );
-            }
-
-            if (homologationOverride)
-            {
-                logger.LogWarning(
-                    "MODO DE HOMOLOGAÇÃO ATIVO: JourneyId {JourneyId} recebeu webhook Certiface com status Completo, "
-                    + "mas document/result retornou Não processado. O fluxo continuará usando o status terminal notificado.",
-                    journey.Id
-                );
-            }
-
+            var codId = CertifaceResultParser.ExtractCodId(result.RootElement) ?? 0d;
+            var finalStatus = ResolveFinalJourneyStatus(codId);
             await repository.MarkJourneyCompletedAsync(
                 journey.Id,
                 result,
-                submission.DeviceLocationJson,
-                providerStatus!,
-                cancellationToken
+                submission?.DeviceLocationJson,
+                providerStatus,
+                cancellationToken,
+                finalStatus
             );
             await StoreFrontalFaceIfPresentAsync(
                 journey,
@@ -129,7 +175,24 @@ public static class WebhookEndpoints
                 cancellationToken
             );
 
-            using var immediateResultDocument = JsonDocument.Parse(submission.ProviderResponseJson);
+            if (codId is >= 200d and < 300d)
+            {
+                await repository.CompleteProviderNotificationAsync(notificationId.Value, cancellationToken);
+
+                logger.LogInformation(
+                    "Webhook Certiface recebido e jornada finalizada para JourneyId {JourneyId}. StatusProvider={ProviderStatus}. Aguardando polling de completion para notificar o Tenant.",
+                    journey.Id,
+                    providerStatus
+                );
+
+                return Results.Ok(new
+                {
+                    received = true,
+                    tenantCallbackPending = true,
+                    providerStatus
+                });
+            }
+
             var callbackPayload = new
             {
                 status = providerStatus,
@@ -137,8 +200,8 @@ public static class WebhookEndpoints
                 journeyId = journey.Id,
                 tenantId = journey.Tenant.Id,
                 idExternoCliente = journey.Subject.ExternalClientId,
-                deviceLocation = ParseJsonNode(submission.DeviceLocationJson),
-                result = CreateCallbackResult(immediateResultDocument.RootElement)
+                deviceLocation = ParseJsonNode(submission?.DeviceLocationJson),
+                result = CreateCallbackResult(result.RootElement)
             };
 
             var callbackStatus = (int?)null;
@@ -177,8 +240,7 @@ public static class WebhookEndpoints
             await repository.CompleteProviderNotificationAsync(notificationId.Value, cancellationToken);
 
             logger.LogInformation(
-                "Webhook Certiface processado para JourneyId {JourneyId}. "
-                + "StatusProvider={ProviderStatus}, callbackTenantEntregue={Delivered}, callbackStatus={CallbackStatus}.",
+                "Webhook Certiface recebido e jornada finalizada para JourneyId {JourneyId}. StatusProvider={ProviderStatus}, callbackTenantEntregue={Delivered}, callbackStatus={CallbackStatus}.",
                 journey.Id,
                 providerStatus,
                 callbackDelivered,
@@ -188,9 +250,9 @@ public static class WebhookEndpoints
             return Results.Ok(new
             {
                 received = true,
-                processed = true,
                 callbackDelivered,
-                callbackStatus
+                callbackStatus,
+                providerStatus
             });
         }
         catch (Exception exception)
@@ -207,12 +269,36 @@ public static class WebhookEndpoints
             );
 
             return Results.Json(
-                new { received = true, processed = false, message = exception.Message },
+                new { received = true, message = exception.Message },
                 statusCode: StatusCodes.Status503ServiceUnavailable
             );
         }
     }
 
+    private static bool TryParseSubmissionResult(LivenessSubmission? submission, out JsonDocument result)
+    {
+        result = null!;
+        if (submission is null || string.IsNullOrWhiteSpace(submission.ProviderResponseJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            result = JsonDocument.Parse(submission.ProviderResponseJson);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+    private static JourneyStatus ResolveFinalJourneyStatus(double codId)
+    {
+        return codId is >= 200d and < 300d
+            ? JourneyStatus.COMPLETED
+            : JourneyStatus.FAILED;
+    }
     private static async Task StoreFrontalFaceIfPresentAsync(
         JourneySession journey,
         JsonElement certifaceResult,
@@ -225,7 +311,7 @@ public static class WebhookEndpoints
         if (string.IsNullOrWhiteSpace(frontalFaceBase64))
         {
             logger.LogWarning(
-                "Resultado Certiface da jornada {JourneyId} não contém fotos.facecaptcha.frontal.",
+                "Resultado Certiface da jornada {JourneyId} nao contem fotos.facecaptcha.frontal.",
                 journey.Id
             );
             return;
@@ -262,22 +348,14 @@ public static class WebhookEndpoints
         return string.IsNullOrWhiteSpace(json) || json == "null" ? null : JsonNode.Parse(json);
     }
 
-    private static bool ShouldAcceptHomologationResult(
-        string providerStatus,
-        string? resultStatus,
-        AwfaceOptions options)
-    {
-        return options.Homologation.AcceptNonProcessedResultAfterCompleteNotification
-            && string.Equals(providerStatus, "Completo", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(resultStatus, "Não processado", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static JsonNode? CreateCallbackResult(JsonElement result)
     {
         var resultNode = JsonNode.Parse(result.GetRawText());
         if (resultNode is JsonObject resultObject)
         {
             resultObject.Remove("responseBlob");
+            resultObject.Remove("appkey");
+            resultObject.Remove("Appkey");
         }
 
         return resultNode;

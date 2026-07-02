@@ -35,7 +35,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     this.ngZone.run(() => this.navigateToCompletion());
   };
   private readonly sessionRejectedHandler = (): void => {
-    this.ngZone.run(() => this.prepareRetry());
+    this.ngZone.run(() => this.handleRejectedSession());
   };
   private readonly sessionInterruptedHandler = (): void => {
     this.ngZone.run(() => this.prepareInterruptedRetry());
@@ -86,8 +86,24 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     this.livenessButtonLabel = 'Iniciar prova de vida';
     this.isLivenessReady = false;
     SampleAppUtilities.fadeOutMainUIAndPrepareForSession();
-    this.faceTecSDKInstance.start3DLiveness(new SessionRequestProcessor());
+
+    this.ensureCurrentAppkey().then(() => {
+      this.faceTecSDKInstance.start3DLiveness(new SessionRequestProcessor());
+    }).catch(error => {
+      console.error(error);
+      DeveloperStatusMessages.displayMessage('<strong class="awface-neutral-status">Nao foi possivel preparar uma nova tentativa.</strong>');
+      SampleAppUtilities.showMainUI();
+      this.isLivenessReady = true;
+    });
   };
+
+  private async ensureCurrentAppkey(): Promise<void> {
+    if (!this.activeSession) {
+      return;
+    }
+
+    this.appkey = await this.awfaceService.issueAppkey(this.activeSession).toPromise();
+  }
 
   public deleteAppKey() {
     this.awfaceService.clearRuntimeState();
@@ -187,7 +203,9 @@ export class FacetecV10Component implements OnInit, OnDestroy {
 
     switch (faceTecSessionResult.status) {
       case FaceTecSDK.FaceTecSessionStatus.RequestAborted:
-        window.dispatchEvent(new CustomEvent('awface:liveness-session-rejected'));
+        window.dispatchEvent(new CustomEvent('awface:liveness-session-rejected', {
+          detail: { codId: (window as any).__awfaceLastLivenessCodId }
+        }));
         break;
       case FaceTecSDK.FaceTecSessionStatus.SessionCompleted:
         DeveloperStatusMessages.displayMessage('Prova de Vida em processo de validação... <span class="awface-status-spinner"></span>')
@@ -212,6 +230,27 @@ export class FacetecV10Component implements OnInit, OnDestroy {
     }
     SampleAppUtilities.showMainUI();
   };
+
+  private handleRejectedSession(): void {
+    const codId = Number((window as any).__awfaceLastLivenessCodId);
+    (window as any).__awfaceLastLivenessCodId = undefined;
+
+    if (codId === 300.2) {
+      this.navigateToBlockedCompletion();
+      return;
+    }
+
+    this.prepareRetry();
+  }
+
+  private navigateToBlockedCompletion(): void {
+    this.awfaceService.saveCompletionResult({
+      status: 'PENDING',
+      message: 'Usu?rio bloqueado pelo provedor de liveness. Aguardando a confirma??o final da valida??o.',
+    });
+
+    this.router.navigateByUrl('/journey-completion');
+  }
 
   private prepareRetry(): void {
     this.livenessButtonLabel = 'Tente novamente';

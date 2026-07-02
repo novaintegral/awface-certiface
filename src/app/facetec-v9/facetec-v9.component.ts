@@ -82,7 +82,7 @@ export class FacetecV9Component implements OnInit, OnDestroy {
       }
 
       const userAgent = this.sdkV9.createFaceTecAPIUserAgentString('');
-      const sessionToken = await this.facetecV9Service.getSessionToken(this.appkey, userAgent);
+      const sessionToken = await this.createV9SessionToken(userAgent);
 
       new FacetecV9Processor(
         sessionToken,
@@ -95,6 +95,7 @@ export class FacetecV9Component implements OnInit, OnDestroy {
             this.navigateToCompletion();
           }),
           rejected: () => this.ngZone.run(() => this.prepareRetry()),
+          blocked: () => this.ngZone.run(() => this.navigateToBlockedCompletion()),
           interrupted: () => this.ngZone.run(() => this.prepareInterruptedRetry()),
           failed: message => this.ngZone.run(() => this.prepareFailure(message)),
         }
@@ -113,6 +114,28 @@ export class FacetecV9Component implements OnInit, OnDestroy {
   cancelProcess(): void {
     this.awfaceService.clearRuntimeState();
     window.close();
+  }
+
+  private async createV9SessionToken(userAgent: string): Promise<string> {
+    try {
+      return await this.facetecV9Service.getSessionToken(this.appkey, userAgent);
+    } catch (error) {
+      if (!this.activeSession || !this.isUnauthorizedSessionTokenError(error)) {
+        throw error;
+      }
+
+      this.appkey = await firstValueFrom(this.awfaceService.issueAppkey(this.activeSession, true));
+      this.requiresFreshAppkey = false;
+      return await this.facetecV9Service.getSessionToken(this.appkey, userAgent);
+    }
+  }
+
+  private isUnauthorizedSessionTokenError(error: unknown): boolean {
+    const message = error instanceof Error
+      ? error.message
+      : JSON.stringify(error || '');
+
+    return message.includes('NAO AUTORIZADO') || message.includes('401');
   }
 
   private initializeSdk(productionKey: string): void {
@@ -156,7 +179,7 @@ export class FacetecV9Component implements OnInit, OnDestroy {
   }
 
   private prepareRetry(): void {
-    this.requiresFreshAppkey = true;
+    this.requiresFreshAppkey = false;
     this.livenessButtonLabel = 'Tente novamente';
     this.isLivenessReady = true;
     this.displayStatus('<strong class="awface-neutral-status">Prova de Vida reprovada.</strong>');
@@ -241,6 +264,15 @@ export class FacetecV9Component implements OnInit, OnDestroy {
       script.onerror = () => reject(new Error(`Erro ao carregar ${src}`));
       document.body.appendChild(script);
     });
+  }
+
+  private navigateToBlockedCompletion(): void {
+    this.awfaceService.saveCompletionResult({
+      status: 'PENDING',
+      message: 'Usuario bloqueado pelo provedor de liveness. Aguardando a confirmacao final da validacao.',
+    });
+
+    this.router.navigateByUrl('/journey-completion');
   }
 
   private navigateToCompletion(): void {

@@ -31,11 +31,14 @@ export class DeveloperStatusMessages {
   };
 
   public static validateLivenessResult = (responseJSON: any, sessionRequestCallback: FaceTecSessionRequestProcessorCallback): void => {
-    if (responseJSON.codID) {
-      if (responseJSON.codID === 300.1 || responseJSON.codID === 300.2) {
-        sessionRequestCallback.abortOnCatastrophicError();
-      }
+    const codId = Number(responseJSON.codID);
+    if (codId === 300.1 || codId === 300.2) {
+      (window as any).__awfaceLastLivenessCodId = codId;
+      sessionRequestCallback.abortOnCatastrophicError();
+      return;
     }
+
+    (window as any).__awfaceLastLivenessCodId = undefined;
     if (responseJSON.error) {
       throw Error
     }

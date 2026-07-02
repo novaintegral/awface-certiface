@@ -153,7 +153,7 @@ public sealed class AwfaceRepository
 
         await transaction.CommitAsync(cancellationToken);
         return await GetTenantByIdAsync(connection, tenantId, cancellationToken)
-            ?? throw new InvalidOperationException("Tenant salvo, mas não encontrado.");
+            ?? throw new InvalidOperationException("Tenant salvo, mas nÃƒÆ’Ã‚Â£o encontrado.");
     }
 
     public async Task<Tenant?> UpdateTenantStatusAsync(Guid tenantId, TenantStatus status, CancellationToken cancellationToken)
@@ -244,7 +244,7 @@ public sealed class AwfaceRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetJourneyByIdAsync(connection, journeyId, cancellationToken)
-            ?? throw new InvalidOperationException("Jornada criada, mas não encontrada.");
+            ?? throw new InvalidOperationException("Jornada criada, mas nÃƒÆ’Ã‚Â£o encontrada.");
     }
 
     public async Task<JourneySession> CreateJourneyLaunchAsync(
@@ -448,6 +448,47 @@ public sealed class AwfaceRepository
         return await GetJourneyByIdAsync(connection, journeyId, cancellationToken);
     }
 
+    public async Task<bool> HasAcceptedConsentAsync(Guid journeyId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select exists (
+                select 1
+                from awface_liveness_consent consent
+                where consent.journey_id = @journey_id
+                  and consent.decision = 'ACCEPTED'
+            )
+            """;
+        command.Parameters.AddWithValue("journey_id", journeyId);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is bool accepted && accepted;
+    }
+
+    public async Task ReactivateJourneyAppkeyAsync(Guid journeyId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            update awface_liveness_journey
+            set status = 'APPKEY_CREATED',
+                completed_at = null,
+                updated_at = now()
+            where id = @journey_id
+              and appkey is not null
+              and exists (
+                  select 1
+                  from awface_liveness_consent consent
+                  where consent.journey_id = awface_liveness_journey.id
+                    and consent.decision = 'ACCEPTED'
+              )
+              and status <> 'COMPLETED'
+            """;
+        command.Parameters.AddWithValue("journey_id", journeyId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<string?> GetReusableAppkeyAsync(Guid journeyId, TimeSpan appkeyLifetime, CancellationToken cancellationToken)
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
@@ -526,6 +567,89 @@ public sealed class AwfaceRepository
         await transaction.CommitAsync(cancellationToken);
     }
 
+    public async Task RegisterRejectedLivenessAsync(
+        Guid journeyId,
+        string appkey,
+        LivenessEngine livenessEngine,
+        string providerResponseJson,
+        string? deviceLocationJson,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        await using (var submissionCommand = connection.CreateCommand())
+        {
+            submissionCommand.Transaction = transaction;
+            submissionCommand.CommandText = """
+                insert into awface_liveness_submission (
+                    journey_id, appkey, liveness_engine, provider_response, device_location, submitted_at, updated_at
+                )
+                values (
+                    @journey_id, @appkey, @liveness_engine, cast(@provider_response as jsonb),
+                    cast(@device_location as jsonb), now(), now()
+                )
+                on conflict (appkey) do update
+                set journey_id = excluded.journey_id,
+                    liveness_engine = excluded.liveness_engine,
+                    provider_response = excluded.provider_response,
+                    device_location = excluded.device_location,
+                    submitted_at = excluded.submitted_at,
+                    updated_at = now()
+                """;
+            submissionCommand.Parameters.AddWithValue("journey_id", journeyId);
+            submissionCommand.Parameters.AddWithValue("appkey", appkey);
+            submissionCommand.Parameters.AddWithValue("liveness_engine", livenessEngine.ToString());
+            submissionCommand.Parameters.AddWithValue("provider_response", NpgsqlDbType.Jsonb, providerResponseJson);
+            submissionCommand.Parameters.AddWithValue(
+                "device_location",
+                NpgsqlDbType.Jsonb,
+                string.IsNullOrWhiteSpace(deviceLocationJson) ? "null" : deviceLocationJson
+            );
+            await submissionCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var historyCommand = connection.CreateCommand())
+        {
+            historyCommand.Transaction = transaction;
+            historyCommand.CommandText = """
+                insert into awface_liveness_attempt_history (
+                    journey_id, appkey, liveness_engine, event_type, provider_response, device_location, created_at
+                )
+                values (
+                    @journey_id, @appkey, @liveness_engine, 'SDK_LIVENESS_300_1',
+                    cast(@provider_response as jsonb), cast(@device_location as jsonb), now()
+                )
+                """;
+            historyCommand.Parameters.AddWithValue("journey_id", journeyId);
+            historyCommand.Parameters.AddWithValue("appkey", appkey);
+            historyCommand.Parameters.AddWithValue("liveness_engine", livenessEngine.ToString());
+            historyCommand.Parameters.AddWithValue("provider_response", NpgsqlDbType.Jsonb, providerResponseJson);
+            historyCommand.Parameters.AddWithValue(
+                "device_location",
+                NpgsqlDbType.Jsonb,
+                string.IsNullOrWhiteSpace(deviceLocationJson) ? "null" : deviceLocationJson
+            );
+            await historyCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await using (var journeyCommand = connection.CreateCommand())
+        {
+            journeyCommand.Transaction = transaction;
+            journeyCommand.CommandText = """
+                update awface_liveness_journey
+                set status = 'APPKEY_CREATED',
+                    completed_at = null,
+                    updated_at = now()
+                where id = @journey_id
+                  and status <> 'COMPLETED'
+                """;
+            journeyCommand.Parameters.AddWithValue("journey_id", journeyId);
+            await journeyCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task<LivenessSubmission?> GetLivenessSubmissionAsync(string appkey, CancellationToken cancellationToken)
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
@@ -567,12 +691,22 @@ public sealed class AwfaceRepository
             values (@journey_id, @appkey, @provider_status, 1, now(), now())
             on conflict (appkey) do update
             set attempts = awface_provider_notification.attempts + 1,
+                provider_status = excluded.provider_status,
                 processing_started_at = now(),
-                last_error = null
-            where awface_provider_notification.processed_at is null
-              and (
+                processed_at = null,
+                last_error = null,
+                received_at = now()
+            where (
                   awface_provider_notification.processing_started_at is null
                   or awface_provider_notification.processing_started_at < now() - interval '5 minutes'
+              )
+              and (
+                  awface_provider_notification.processed_at is null
+                  or awface_provider_notification.processed_at < coalesce((
+                      select submission.submitted_at
+                      from awface_liveness_submission submission
+                      where submission.appkey = excluded.appkey
+                  ), awface_provider_notification.processed_at)
               )
             returning id
             """;
@@ -613,12 +747,67 @@ public sealed class AwfaceRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task MarkJourneyCompletedAsync(
+    public async Task PersistJourneyResultAsync(
         Guid journeyId,
         JsonDocument result,
         string? deviceLocationJson,
         string providerStatus,
         CancellationToken cancellationToken)
+    {
+        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var location = ParseDeviceLocation(deviceLocationJson);
+
+        await using (var removePreviousResultCommand = connection.CreateCommand())
+        {
+            removePreviousResultCommand.Transaction = transaction;
+            removePreviousResultCommand.CommandText = """
+                delete from awface_liveness_result
+                where journey_id = @journey_id
+                """;
+            removePreviousResultCommand.Parameters.AddWithValue("journey_id", journeyId);
+            await removePreviousResultCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var resultCommand = connection.CreateCommand())
+        {
+            resultCommand.Transaction = transaction;
+            resultCommand.CommandText = """
+                insert into awface_liveness_result (
+                    journey_id, provider_status, id_externo_cliente, bureau_payload,
+                    liveness_payload,
+                    location_latitude, location_longitude, location_accuracy, location_captured_at,
+                    created_at
+                )
+                values (
+                    @journey_id, @provider_status, @id_externo_cliente, cast(@bureau_payload as jsonb),
+                    cast(@liveness_payload as jsonb),
+                    @location_latitude, @location_longitude, @location_accuracy, @location_captured_at,
+                    now()
+                )
+                """;
+            var root = result.RootElement;
+            resultCommand.Parameters.AddWithValue("journey_id", journeyId);
+            resultCommand.Parameters.AddWithValue("provider_status", providerStatus);
+            resultCommand.Parameters.AddWithValue("id_externo_cliente", root.TryGetProperty("idExternoCliente", out var externalId) ? externalId.GetString() ?? (object)DBNull.Value : DBNull.Value);
+            AddJsonParameter(resultCommand, "bureau_payload", root, "certifaceID");
+            AddJsonParameter(resultCommand, "liveness_payload", root, "facecaptcha");
+            resultCommand.Parameters.AddWithValue("location_latitude", (object?)location?.Latitude ?? DBNull.Value);
+            resultCommand.Parameters.AddWithValue("location_longitude", (object?)location?.Longitude ?? DBNull.Value);
+            resultCommand.Parameters.AddWithValue("location_accuracy", (object?)location?.Accuracy ?? DBNull.Value);
+            resultCommand.Parameters.AddWithValue("location_captured_at", (object?)location?.CapturedAt ?? DBNull.Value);
+            await resultCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+    public async Task MarkJourneyCompletedAsync(
+        Guid journeyId,
+        JsonDocument result,
+        string? deviceLocationJson,
+        string providerStatus,
+        CancellationToken cancellationToken,
+        JourneyStatus? finalStatus = null)
     {
         await using var connection = await _db.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -676,12 +865,11 @@ public sealed class AwfaceRepository
                 where id = @journey_id
                 """;
             journeyCommand.Parameters.AddWithValue("journey_id", journeyId);
-            journeyCommand.Parameters.AddWithValue(
-                "journey_status",
-                string.Equals(providerStatus, "Erro", StringComparison.OrdinalIgnoreCase)
-                    ? JourneyStatus.FAILED.ToString()
-                    : JourneyStatus.COMPLETED.ToString()
-            );
+            var journeyStatus = finalStatus
+                ?? (string.Equals(providerStatus, "Erro", StringComparison.OrdinalIgnoreCase)
+                    ? JourneyStatus.FAILED
+                    : JourneyStatus.COMPLETED);
+            journeyCommand.Parameters.AddWithValue("journey_status", journeyStatus.ToString());
             await journeyCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -946,7 +1134,7 @@ public sealed class AwfaceRepository
             reader.GetGuid(0),
             tenant,
             Enum.Parse<JourneyType>(reader.GetString(1)),
-            Enum.Parse<LivenessEngine>(reader.GetString(28)),
+            Enum.Parse<LivenessEngine>(reader.GetString(30)),
             new JourneySubject(
                 _protector.Unprotect(reader.GetString(2)),
                 _protector.Unprotect(reader.GetString(3)),
@@ -955,8 +1143,8 @@ public sealed class AwfaceRepository
             ),
             Enum.Parse<JourneyStatus>(reader.GetString(6)),
             reader.IsDBNull(7) ? null : reader.GetString(7),
-            null,
-            null,
+            reader.IsDBNull(28) ? null : reader.GetFieldValue<DateTimeOffset>(28),
+            reader.IsDBNull(29) ? null : reader.GetFieldValue<DateTimeOffset>(29),
             reader.GetFieldValue<DateTimeOffset>(8),
             reader.GetFieldValue<DateTimeOffset>(9)
         );
@@ -1054,7 +1242,20 @@ public sealed class AwfaceRepository
                t.id, t.name, t.integration_token, t.status::text, t.terms_url, t.privacy_url, t.logo_base64,
                t.theme, t.primary_color, t.secondary_color, t.callback_url, t.secure_callback_token,
                t.callback_oauth_enabled, t.callback_oauth_token_url, t.callback_oauth_client_id, t.callback_oauth_client_secret_ciphertext,
-               t.created_at, t.updated_at, j.liveness_engine
+               t.created_at, t.updated_at,
+               (
+                   select max(consent.decided_at)
+                   from awface_liveness_consent consent
+                   where consent.journey_id = j.id
+                     and consent.decision = 'ACCEPTED'
+               ) as consent_at,
+               (
+                   select max(consent.decided_at)
+                   from awface_liveness_consent consent
+                   where consent.journey_id = j.id
+                     and consent.decision = 'REFUSED'
+               ) as refusal_at,
+               j.liveness_engine
         from awface_liveness_journey j
         join awface_tenant t on t.id = j.tenant_id
         """;
