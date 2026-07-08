@@ -21,6 +21,10 @@ public sealed class TenantWebhookClient
 
     public async Task<TenantWebhookResult> SendAsync(Tenant tenant, object payload, CancellationToken cancellationToken)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+        var effectiveToken = timeoutCts.Token;
+
         using var callbackClient = _httpClientFactory.CreateClient("TenantCallback");
         using var request = new HttpRequestMessage(HttpMethod.Post, tenant.CallbackUrl)
         {
@@ -32,13 +36,20 @@ public sealed class TenantWebhookClient
 
         if (tenant.CallbackOAuthEnabled)
         {
-            var accessToken = await GetAccessTokenAsync(tenant, cancellationToken);
+            var accessToken = await GetAccessTokenAsync(tenant, effectiveToken);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         }
 
-        using var response = await callbackClient.SendAsync(request, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        return new TenantWebhookResult(response.IsSuccessStatusCode, (int)response.StatusCode, responseBody);
+        try
+        {
+            using var response = await callbackClient.SendAsync(request, effectiveToken);
+            var responseBody = await response.Content.ReadAsStringAsync(effectiveToken);
+            return new TenantWebhookResult(response.IsSuccessStatusCode, (int)response.StatusCode, responseBody);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new TenantWebhookResult(false, 408, "Timeout ao comunicar o webhook do Tenant.");
+        }
     }
 
     private async Task<string> GetAccessTokenAsync(Tenant tenant, CancellationToken cancellationToken)

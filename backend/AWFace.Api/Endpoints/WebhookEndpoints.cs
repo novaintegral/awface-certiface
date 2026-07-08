@@ -86,17 +86,12 @@ public static class WebhookEndpoints
             {
                 await repository.ReactivateJourneyAppkeyAsync(journey.Id, cancellationToken);
 
-                var retryCallbackPayload = new
-                {
-                    status = providerStatus,
+                var retryCallbackPayload = TenantCallbackPayloadFactory.Create(
+                    journey,
                     appkey,
-                    journeyId = journey.Id,
-                    tenantId = journey.Tenant.Id,
-                    idExternoCliente = journey.Subject.ExternalClientId,
-                    retryAllowed = true,
-                    deviceLocation = ParseJsonNode(submission?.DeviceLocationJson),
-                    result = CreateCallbackResult(immediateResult.RootElement)
-                };
+                    immediateResult.RootElement,
+                    submission?.DeviceLocationJson
+                );
                 var retryCallbackStatus = (int?)null;
                 var retryCallbackResponseBody = (string?)null;
                 var retryCallbackDelivered = false;
@@ -193,16 +188,12 @@ public static class WebhookEndpoints
                 });
             }
 
-            var callbackPayload = new
-            {
-                status = providerStatus,
+            var callbackPayload = TenantCallbackPayloadFactory.Create(
+                journey,
                 appkey,
-                journeyId = journey.Id,
-                tenantId = journey.Tenant.Id,
-                idExternoCliente = journey.Subject.ExternalClientId,
-                deviceLocation = ParseJsonNode(submission?.DeviceLocationJson),
-                result = CreateCallbackResult(result.RootElement)
-            };
+                result.RootElement,
+                submission?.DeviceLocationJson
+            );
 
             var callbackStatus = (int?)null;
             var callbackResponseBody = (string?)null;

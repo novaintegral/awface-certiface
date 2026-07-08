@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { Subscription, catchError, of, switchMap, timer } from 'rxjs';
+import { Subscription, catchError, exhaustMap, of, timer } from 'rxjs';
 import { AwfaceService } from '../awface/awface.service';
 import { AwfaceCompletionResult, AwfaceJourneySession } from '../awface/models';
 
@@ -107,7 +107,7 @@ export class JourneyCompletionComponent implements OnInit, OnDestroy {
 
     this.completionPolling?.unsubscribe();
     this.completionPolling = timer(0, 5000).pipe(
-      switchMap(() => this.awfaceService.getCompletionStatus(journeyId).pipe(
+      exhaustMap(() => this.awfaceService.getCompletionStatus(journeyId).pipe(
         catchError(() => of<AwfaceCompletionResult | null>(null))
       ))
     ).subscribe(result => {
