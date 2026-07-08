@@ -366,17 +366,12 @@ public static class JourneyEndpoints
         try
         {
             using var result = await certiface.GetDocumentResultAsync(journey.Appkey, cancellationToken);
-            var providerStatus = CertifaceResultParser.ExtractStatus(result.RootElement) ?? "Completo";
-            var callbackPayload = new
-            {
-                status = providerStatus,
-                appkey = journey.Appkey,
-                journeyId = journey.Id,
-                tenantId = journey.Tenant.Id,
-                idExternoCliente = journey.Subject.ExternalClientId,
-                deviceLocation = ParseJsonNode(submission.DeviceLocationJson),
-                result = CreateCallbackResult(result.RootElement)
-            };
+            var callbackPayload = TenantCallbackPayloadFactory.Create(
+                journey,
+                journey.Appkey,
+                result.RootElement,
+                submission.DeviceLocationJson
+            );
 
             var callbackStatus = (int?)null;
             var callbackResponseBody = (string?)null;
@@ -387,7 +382,7 @@ public static class JourneyEndpoints
                 var callbackResponse = await webhookClient.SendAsync(
                     journey.Tenant,
                     callbackPayload,
-                    cancellationToken
+                    CancellationToken.None
                 );
                 callbackStatus = callbackResponse.StatusCode;
                 callbackResponseBody = callbackResponse.ResponseBody;
@@ -409,7 +404,7 @@ public static class JourneyEndpoints
                 callbackPayload,
                 callbackStatus,
                 callbackResponseBody,
-                cancellationToken
+                CancellationToken.None
             );
 
             logger.LogInformation(
