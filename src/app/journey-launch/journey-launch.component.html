@@ -28,7 +28,10 @@
       <button type="button" class="secondary-action" (click)="refuseConsent()">Não autorizo</button>
     </div>
 
-    <button type="button" class="primary-action" *ngIf="status === 'refused'" (click)="backToConsent()">Voltar</button>
+    <div class="refused-actions" *ngIf="status === 'refused'">
+      <button type="button" class="primary-action" (click)="backToConsent()">Quero continuar</button>
+      <button type="button" class="secondary-action" (click)="closeWindow()">Fechar</button>
+    </div>
 
     <a class="start-link" *ngIf="status === 'failed'" routerLink="/journey-start">Voltar para o início</a>
   </section>

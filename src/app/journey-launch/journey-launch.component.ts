@@ -98,6 +98,10 @@ export class JourneyLaunchComponent implements OnInit {
     this.message = 'Precisamos da sua permissão para iniciar a prova de vida.';
   }
 
+  closeWindow(): void {
+    window.close();
+  }
+
   getTenantLogo(): string {
     return this.awfaceService.getJourneyLogoSource(this.session);
   }

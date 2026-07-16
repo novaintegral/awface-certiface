@@ -14,7 +14,8 @@
 }
 
 .brand-row,
-.consent-actions {
+.consent-actions,
+.refused-actions {
   display: flex;
   align-items: center;
 }
@@ -156,7 +157,8 @@ a:focus {
   color: #b42318;
 }
 
-.consent-actions {
+.consent-actions,
+.refused-actions {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 28px;
@@ -208,4 +210,13 @@ a:focus {
   .journey-form {
     grid-template-columns: 1fr;
   }
+}
+
+.refused-actions {
+  justify-content: center;
+}
+
+.refused-actions .primary-action,
+.refused-actions .secondary-action {
+  flex: 0 1 190px;
 }
