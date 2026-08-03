@@ -2,8 +2,8 @@
 
 Este compose sobe:
 
-- `awface-front`: Angular servido por Nginx na porta `8080`.
-- `awface-api`: AWFace.Api .NET 9 na porta `5000` e também atrás do Nginx em `/api`.
+- `awface-front`: Angular servido por Nginx na porta `5580`.
+- `awface-api`: AWFace.Api .NET 9 na porta `5500` e também atrás do Nginx em `/api`.
 - `awface-db`: PostgreSQL 16 na porta `5432`.
 
 ## Preparar configuração
@@ -44,9 +44,9 @@ docker compose up -d --build
 
 Acesse:
 
-- Frontend: `http://localhost:8080`
-- API health: `http://localhost:8080/health`
-- API direta: `http://localhost:5000/health`
+- Frontend: `http://localhost:5580`
+- API health: `http://localhost:5580/health`
+- API direta: `http://localhost:5500/health`
 
 ## Persistência de dados
 

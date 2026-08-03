@@ -28,5 +28,5 @@ LABEL org.opencontainers.image.title="AWFace Frontend" \
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/facetec-demo-app /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 5580
 
