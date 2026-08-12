@@ -122,6 +122,10 @@ export class JourneyComponent implements OnInit {
     return this.awfaceService.getJourneyLogoSource(this.session);
   }
 
+  closeWindow(): void {
+    window.close();
+  }
+
   private issueAppkeyAndContinue(session: AwfaceJourneySession): void {
     this.awfaceService.issueAppkey(session).subscribe({
       next: () => this.router.navigateByUrl('/journey'),

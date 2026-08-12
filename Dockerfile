@@ -1,6 +1,6 @@
 FROM node:20-alpine AS build
 
-ARG AWFACE_VERSION=1.0.0
+ARG AWFACE_VERSION=1.0.3
 ARG AWFACE_BUILD_COMMIT=unknown
 ARG AWFACE_BUILD_DATE=unknown
 
@@ -15,7 +15,7 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-ARG AWFACE_VERSION=1.0.0
+ARG AWFACE_VERSION=1.0.3
 ARG AWFACE_BUILD_COMMIT=unknown
 ARG AWFACE_BUILD_DATE=unknown
 
@@ -28,5 +28,5 @@ LABEL org.opencontainers.image.title="AWFace Frontend" \
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/facetec-demo-app /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 5580
 

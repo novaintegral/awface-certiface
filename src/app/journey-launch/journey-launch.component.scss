@@ -53,7 +53,8 @@ p {
   font-weight: 800;
 }
 
-.consent-actions {
+.consent-actions,
+.refused-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -127,4 +128,13 @@ button,
   to {
     transform: rotate(360deg);
   }
+}
+
+.refused-actions {
+  justify-content: center;
+}
+
+.refused-actions .primary-action,
+.refused-actions .secondary-action {
+  flex: 0 1 190px;
 }

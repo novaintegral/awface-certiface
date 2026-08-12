@@ -6,11 +6,12 @@ import {
   readVersion,
   repositoryRoot,
   writeJson,
+  writeReleaseVersion,
 } from './version-utils.mjs';
 
 const requested = process.argv[2];
 if (!requested) {
-  throw new Error('Informe major, minor, patch ou uma versão SemVer. Exemplo: npm run release:prepare -- patch');
+  throw new Error('Informe major, minor, patch ou uma versao SemVer. Exemplo: npm run release:prepare -- patch');
 }
 
 const currentVersion = readVersion();
@@ -35,6 +36,7 @@ if (packageLock.packages?.['']) {
   packageLock.packages[''].version = nextVersion;
 }
 writeJson('package-lock.json', packageLock);
+writeReleaseVersion(nextVersion);
 
 console.log(`Release preparada: ${currentVersion} -> ${nextVersion}`);
-console.log('Atualize CHANGELOG.md, execute os builds e crie a tag somente após a validação.');
+console.log('Atualize CHANGELOG.md, execute os builds e crie a tag somente apos a validacao.');

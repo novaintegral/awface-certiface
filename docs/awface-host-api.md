@@ -231,37 +231,17 @@ Os endpoints abaixo existem, mas não devem ser chamados diretamente pela aplica
 - `POST /api/awface/facetec/v9/3d/liveness`
 - `POST /api/awface/facetec/v10/3d/process-request`
 - `POST /api/awface/facetec/3d/process-request` (alias legado V10)
-- `POST /api/awface/webhooks/certiface`
-- `POST /webhookliveness`
 
 Esses endpoints são usados pelo frontend AWFace, pelo SDK FaceTec ou por fluxos legados.
 
-## Webhook de notificação da Certiface
+## Fluxo de conclusão interno
 
-Este endpoint é público para integração do provedor Certiface, mas não deve
-ser chamado pela aplicação Host:
+O AWFace não expõe mais endpoint de webhook terminal para o provedor Certiface.
+A entrega ao Tenant acontece no próprio retorno do SDK FaceTec:
 
-```http
-POST /api/awface/webhooks/certiface
-Content-Type: application/json
-```
-
-Payload:
-
-```json
-{
-  "Status": "Completo",
-  "Appkey": "eyJhbGciOiJIUzI1NiJ9..."
-}
-```
-
-Somente `Completo` e `Erro` são status terminais. Depois da notificação, o
-AWFace localiza a jornada pela appkey, consulta `document/result`, persiste o
-resultado e dispara o webhook do Tenant. O processamento é idempotente por
-appkey.
-
-O alias legado `POST /webhookliveness` continua disponível.
-
+- `codID = 200`: o AWFace consulta imediatamente `/facecaptcha/service/captcha/document/result`, persiste o resultado enriquecido, armazena a face frontal quando disponível e dispara o `UrlCallback` do Tenant.
+- `codID = 300.1`: o AWFace registra o retorno do SDK, dispara o `UrlCallback` do Tenant com `retryAllowed` e mantém a jornada apta para nova tentativa.
+- `codID = 300.2`: o AWFace registra o retorno do SDK, dispara o `UrlCallback` do Tenant e finaliza a jornada como falha/bloqueio.
 ## Estado interno de conclusão
 
 O frontend consulta:
@@ -273,7 +253,7 @@ GET /api/awface/journeys/{journeyId}/completion
 A consulta ocorre imediatamente ao abrir `/journey-completion` e depois a cada
 5 segundos enquanto o status for `PENDING`.
 
-- `PENDING`: aguardando notificação da Certiface ou entrega ao Tenant.
+- `PENDING`: aguardando o registro da entrega ao Tenant.
 - `SUCCESS`: webhook do Tenant entregue com HTTP 2xx.
 - `FAILED`: erro terminal do provedor ou falha na entrega ao Tenant.
 

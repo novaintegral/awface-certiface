@@ -92,6 +92,9 @@
     <div class="refused-icon" aria-hidden="true">!</div>
     <h1>Autorização não concedida</h1>
     <p>Sem a autorização, não podemos iniciar a prova de vida. Sua escolha foi registrada.</p>
-    <button type="button" (click)="step = 'consent'">Voltar</button>
+    <div class="refused-actions">
+      <button type="button" class="primary-action" (click)="step = 'consent'">Quero continuar</button>
+      <button type="button" class="secondary-action" (click)="closeWindow()">Fechar</button>
+    </div>
   </section>
 </main>

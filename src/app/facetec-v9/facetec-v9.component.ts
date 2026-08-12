@@ -1,4 +1,5 @@
 import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { environment } from 'src/environments/environment';
@@ -131,11 +132,30 @@ export class FacetecV9Component implements OnInit, OnDestroy {
   }
 
   private isUnauthorizedSessionTokenError(error: unknown): boolean {
-    const message = error instanceof Error
-      ? error.message
-      : JSON.stringify(error || '');
+    if (!(error instanceof HttpErrorResponse)) {
+      return false;
+    }
 
-    return message.includes('NAO AUTORIZADO') || message.includes('401');
+    if (error.status === 401) {
+      return true;
+    }
+
+    return this.hasNaoAutorizadoProviderError(error.error);
+  }
+
+  private hasNaoAutorizadoProviderError(errorBody: unknown): boolean {
+    if (typeof errorBody === 'string') {
+      try {
+        const parsed = JSON.parse(errorBody);
+        return parsed?.error === 'NAO AUTORIZADO';
+      } catch {
+        return false;
+      }
+    }
+
+    return !!errorBody
+      && typeof errorBody === 'object'
+      && (errorBody as { error?: unknown }).error === 'NAO AUTORIZADO';
   }
 
   private initializeSdk(productionKey: string): void {

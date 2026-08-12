@@ -1,4 +1,4 @@
-import { readJson, readVersion } from './version-utils.mjs';
+import { readJson, readReleaseVersion, readVersion } from './version-utils.mjs';
 
 const expectedVersion = readVersion();
 const packageVersion = readJson('package.json').version;
@@ -7,6 +7,7 @@ const mismatches = [
   ['package.json', packageVersion],
   ['package-lock.json', lockFile.version],
   ['package-lock.json packages[""]', lockFile.packages?.['']?.version],
+  ['src/app/core/release-version.ts', readReleaseVersion()],
 ].filter(([, version]) => version !== expectedVersion);
 
 if (mismatches.length > 0) {

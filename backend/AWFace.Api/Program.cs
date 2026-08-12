@@ -66,6 +66,5 @@ app.MapAdminEndpoints();
 app.MapJourneyLaunchEndpoints();
 app.MapJourneyEndpoints();
 app.MapFacetecEndpoints();
-app.MapWebhookEndpoints();
 
 app.Run();
