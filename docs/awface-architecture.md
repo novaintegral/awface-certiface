@@ -24,9 +24,9 @@ The production-style host integration starts server-to-server:
 3. The Host redirects the user to `/#/journey-launch?token=...`.
 4. Angular consumes the token, stores the resolved journey locally and displays the user consent screen.
 5. After explicit user consent, Angular registers the decision, creates the Certiface appkey through AWFace.Api and redirects to `/#/journey`.
-6. After successful SDK submission, the user is sent to `/#/journey-completion` while AWFace waits for the Certiface terminal webhook.
-7. Certiface posts `Status` and `Appkey` to `/api/awface/webhooks/certiface`.
-8. AWFace queries `document/result`, persists the final result and calls the Tenant `UrlCallback`.
+6. After successful SDK submission, AWFace processes the SDK result and calls the Tenant `UrlCallback` without waiting for a Certiface provider callback.
+7. For `codID = 200`, AWFace also queries `document/result`, persists the enriched result and stores the frontal face asset before calling the Tenant callback.
+8. The user is sent to `/#/journey-completion`, which reflects the Tenant callback delivery state.
 
 The `launchToken` can be reused while it is valid. AWFace only rejects invalid or expired launch tokens. The higher-priority expiration control is the liveness provider `appkey`: AWFace reuses an existing appkey only while it is inside `Awface:LivenessAppkeyLifetimeMinutes`; after that window, AWFace requests a fresh provider appkey.
 
@@ -83,13 +83,12 @@ Based on the Certiface API Global documentation:
 2. Create an appkey with `POST /facecaptcha/service/captcha/appkey`.
 3. Start FaceTec V9 or V10 according to the engine persisted in the journey.
 4. Route all SDK requests through the engine-specific AWFace endpoints.
-5. Redirect the browser immediately to `/journey-completion`.
-6. Wait for the provider terminal webhook at `POST /api/awface/webhooks/certiface`.
-7. Query the final result with `POST /facecaptcha/service/captcha/document/result` only after the provider reports `Completo` or `Erro`.
-8. Store the final result in Postgres.
-9. Extract `fotos.facecaptcha.frontal`, save the face image encrypted with AES-256-GCM in AWFace persistent filesystem storage, and store only the asset metadata in Postgres.
-10. Forward the result to the tenant `UrlCallback`, optionally authenticated with OAuth2 Client Credentials.
-11. Expose the final callback state through `GET /api/awface/journeys/{journeyId}/completion`.
+5. Process the SDK result immediately in AWFace.
+6. For `codID = 200`, query `POST /facecaptcha/service/captcha/document/result` with the appkey, store the enriched result in Postgres, and save `fotos.facecaptcha.frontal` encrypted with AES-256-GCM in AWFace persistent filesystem storage.
+7. For `codID = 300.1`, persist the SDK result, notify the Tenant and keep the journey active for retry.
+8. For `codID = 300.2`, persist the SDK result, notify the Tenant and finalize the journey.
+9. Forward the result to the tenant `UrlCallback`, optionally authenticated with OAuth2 Client Credentials.
+10. Expose the callback delivery state through `GET /api/awface/journeys/{journeyId}/completion`.
 
 ## Liveness engine selection
 
@@ -114,9 +113,7 @@ The SDK redirects to `/journey-completion` immediately after a successful
 submission. The completion screen performs its first status request
 immediately and polls every 5 seconds while the response is `PENDING`.
 
-`SUCCESS` is returned only after provider processing is accepted and the
-Tenant callback responds with HTTP 2xx. Provider terminal errors or Tenant
-callback delivery failures produce `FAILED`.
+`SUCCESS` is returned after the Tenant callback responds with HTTP 2xx. Tenant callback delivery failures or blocking provider results produce `FAILED`.
 
 The detailed implementation record is available in
 [`2026-06-24-engines-completion-provider-webhook.md`](./2026-06-24-engines-completion-provider-webhook.md).

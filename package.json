@@ -1,16 +1,17 @@
 {
   "name": "awface",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "scripts": {
     "ng": "ng",
-    "prestart": "npm run version:verify",
+    "prestart": "npm run version:sync && npm run version:verify",
     "start": "ng serve",
-    "prebuild": "npm run version:verify",
+    "prebuild": "npm run version:sync && npm run version:verify",
     "build": "ng build",
-    "prewatch": "npm run version:verify",
+    "prewatch": "npm run version:sync && npm run version:verify",
     "watch": "ng build --watch --configuration development",
-    "pretest": "npm run version:verify",
+    "pretest": "npm run version:sync && npm run version:verify",
     "test": "ng test",
+    "version:sync": "node scripts/sync-release-version.mjs",
     "version:verify": "node scripts/verify-version.mjs",
     "release:prepare": "node scripts/prepare-release.mjs"
   },

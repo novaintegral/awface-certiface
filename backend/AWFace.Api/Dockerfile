@@ -1,6 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 
-ARG AWFACE_VERSION=1.0.0
+ARG AWFACE_VERSION=1.0.3
 ARG AWFACE_BUILD_COMMIT=unknown
 
 WORKDIR /src
@@ -20,7 +20,7 @@ RUN test "$(cat VERSION)" = "$AWFACE_VERSION" && \
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0
 
-ARG AWFACE_VERSION=1.0.0
+ARG AWFACE_VERSION=1.0.3
 ARG AWFACE_BUILD_COMMIT=unknown
 ARG AWFACE_BUILD_DATE=unknown
 

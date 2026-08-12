@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using AWFace.Api.Contracts;
 using AWFace.Api.Configuration;
 using AWFace.Api.Data;
@@ -133,9 +132,6 @@ public static class JourneyEndpoints
         group.MapGet("/{journeyId:guid}/completion", async (
             Guid journeyId,
             AwfaceRepository repository,
-            CertifaceClient certiface,
-            TenantWebhookClient webhookClient,
-            ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
             var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
@@ -153,23 +149,6 @@ public static class JourneyEndpoints
                 && callback.DeliveredAt <= currentSubmission.SubmittedAt)
             {
                 callback = null;
-            }
-
-            if (callback is null && journey.Status == JourneyStatus.COMPLETED)
-            {
-                var completionResult = await TryDispatchTenantCallbackAfterProviderCompletionAsync(
-                    journey,
-                    repository,
-                    certiface,
-                    webhookClient,
-                    loggerFactory,
-                    cancellationToken
-                );
-
-                if (completionResult is not null)
-                {
-                    return completionResult;
-                }
             }
 
             if (callback is null)
@@ -339,118 +318,6 @@ public static class JourneyEndpoints
         return app;
     }
 
-    private static async Task<IResult?> TryDispatchTenantCallbackAfterProviderCompletionAsync(
-        JourneySession journey,
-        AwfaceRepository repository,
-        CertifaceClient certiface,
-        TenantWebhookClient webhookClient,
-        ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
-    {
-        var logger = loggerFactory.CreateLogger("AWFace.Journey.Completion");
-        if (string.IsNullOrWhiteSpace(journey.Appkey))
-        {
-            return null;
-        }
-
-        var submission = await repository.GetLivenessSubmissionAsync(journey.Appkey, cancellationToken);
-        if (submission is null)
-        {
-            logger.LogWarning(
-                "Jornada {JourneyId} concluida pelo provedor, mas sem submissao de liveness registrada para disparar webhook do Tenant.",
-                journey.Id
-            );
-            return null;
-        }
-
-        try
-        {
-            using var result = await certiface.GetDocumentResultAsync(journey.Appkey, cancellationToken);
-            var callbackPayload = TenantCallbackPayloadFactory.Create(
-                journey,
-                journey.Appkey,
-                result.RootElement,
-                submission.DeviceLocationJson
-            );
-
-            var callbackStatus = (int?)null;
-            var callbackResponseBody = (string?)null;
-            var callbackDelivered = false;
-
-            try
-            {
-                var callbackResponse = await webhookClient.SendAsync(
-                    journey.Tenant,
-                    callbackPayload,
-                    CancellationToken.None
-                );
-                callbackStatus = callbackResponse.StatusCode;
-                callbackResponseBody = callbackResponse.ResponseBody;
-                callbackDelivered = callbackResponse.Delivered;
-            }
-            catch (Exception exception)
-            {
-                callbackResponseBody = exception.Message;
-                logger.LogError(
-                    exception,
-                    "Falha ao enviar webhook do Tenant via polling de completion. JourneyId {JourneyId}.",
-                    journey.Id
-                );
-            }
-
-            await repository.RegisterCallbackDeliveryAsync(
-                journey.Id,
-                journey.Tenant.CallbackUrl,
-                callbackPayload,
-                callbackStatus,
-                callbackResponseBody,
-                CancellationToken.None
-            );
-
-            logger.LogInformation(
-                "Webhook do Tenant disparado via polling de completion para JourneyId {JourneyId}. entregue={Delivered}, status={CallbackStatus}.",
-                journey.Id,
-                callbackDelivered,
-                callbackStatus
-            );
-
-            var success = callbackStatus is >= 200 and <= 299;
-            return Results.Ok(new
-            {
-                status = success ? "SUCCESS" : "FAILED",
-                callbackStatus,
-                message = success
-                    ? ""
-                    : "A prova de vida foi concluida, mas houve falha ao comunicar o sistema de assinatura.",
-                deliveredAt = DateTimeOffset.UtcNow
-            });
-        }
-        catch (CertifaceProviderException exception)
-        {
-            logger.LogWarning(
-                exception,
-                "Jornada {JourneyId} concluida pelo provedor, mas document/result ainda nao respondeu para o polling de completion.",
-                journey.Id
-            );
-            return null;
-        }
-    }
-
-    private static JsonNode? ParseJsonNode(string? json)
-    {
-        return string.IsNullOrWhiteSpace(json) || json == "null" ? null : JsonNode.Parse(json);
-    }
-
-    private static JsonNode? CreateCallbackResult(JsonElement result)
-    {
-        var resultNode = JsonNode.Parse(result.GetRawText());
-        if (resultNode is JsonObject resultObject)
-        {
-            resultObject.Remove("responseBlob");
-        }
-
-        return resultNode;
-    }
     private static bool IsBlockedLivenessSubmission(LivenessSubmission? submission)
     {
         if (submission is null)

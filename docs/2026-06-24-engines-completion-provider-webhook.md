@@ -1,3 +1,4 @@
+> Atualização: o provedor Certiface não dispara webhook terminal para o AWFace neste fluxo. O comportamento vigente é: o AWFace processa o retorno do SDK FaceTec, consulta `/document/result` imediatamente quando `codID = 200`, persiste o resultado/face e dispara o webhook do Tenant. Para `codID = 300.1`, persiste o retorno do SDK, notifica o Tenant e mantém retentativa. Para `codID = 300.2`, persiste o retorno do SDK, notifica o Tenant e finaliza a jornada.
 # Registro técnico AWFace - 24 de junho de 2026
 
 Este documento registra as alterações realizadas no fluxo de prova de vida do
@@ -100,64 +101,9 @@ pendente, novas consultas são feitas a cada **5 segundos**.
 - o provedor informou erro terminal ou a entrega ao webhook do Tenant falhou;
 - apresenta a mensagem de falha na tela.
 
-## 3. Webhook recebido da Certiface
+## 3. Processamento após retorno do SDK FaceTec
 
-O AWFace não consulta mais `/document/result` imediatamente depois da chamada
-de liveness. Ele aguarda a notificação terminal do provedor.
-
-Endpoint canônico:
-
-```http
-POST /api/awface/webhooks/certiface
-Content-Type: application/json
-```
-
-Alias legado:
-
-```http
-POST /webhookliveness
-Content-Type: application/json
-```
-
-Payload esperado:
-
-```json
-{
-  "Status": "Completo",
-  "Appkey": "eyJhbGciOiJIUzI1NiJ9..."
-}
-```
-
-Status terminais reconhecidos:
-
-- `Completo`;
-- `Erro`.
-
-Outros status são aceitos como notificações não terminais, mas não finalizam a
-jornada.
-
-### Processamento da notificação
-
-1. Localizar a jornada pela appkey atual ou pelo histórico.
-2. Registrar a notificação de forma idempotente.
-3. Recuperar a submissão do SDK associada à mesma appkey.
-4. Consultar `/facecaptcha/service/captcha/document/result` usando
-   `application/x-www-form-urlencoded`.
-5. Persistir o resultado da prova de vida.
-6. Extrair e armazenar criptografada a imagem frontal, quando disponível.
-7. Incorporar as coordenadas capturadas pelo browser.
-8. Disparar o webhook configurado no Tenant.
-9. Registrar a entrega para que `/completion` retorne o estado final.
-
-O controle idempotente usa `awface_provider_notification`, com unicidade por
-appkey. Reenvios não devem duplicar resultado, imagem ou webhook do Tenant.
-
-### Respostas esperadas
-
-- `200`: notificação terminal processada ou já processada;
-- `202`: status recebido, porém ainda não terminal;
-- `404`: appkey não vinculada a uma jornada;
-- `503`: resultado ainda inconsistente e modo de homologação desabilitado.
+O endpoint de webhook terminal do provedor foi removido do fluxo ativo. A decisão da jornada nasce do retorno do SDK FaceTec recebido pelos endpoints internos V9/V10. Quando `codID = 200`, o AWFace consulta `/facecaptcha/service/captcha/document/result` imediatamente para enriquecer a resposta antes de disparar o Tenant. Quando `codID = 300.1`, usa o retorno do SDK e mantém a jornada ativa para retentativa. Quando `codID = 300.2`, usa o retorno do SDK, notifica o Tenant e finaliza a jornada.
 
 ## 4. Webhook enviado ao Tenant
 

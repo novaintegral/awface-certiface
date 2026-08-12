@@ -1158,7 +1158,126 @@ public sealed class AwfaceRepository
             return;
         }
 
+        if (string.Equals(propertyName, "facecaptcha", StringComparison.OrdinalIgnoreCase))
+        {
+            command.Parameters.AddWithValue(name, NpgsqlDbType.Jsonb, BuildFlatFacecaptchaPayload(root));
+            return;
+        }
+
         command.Parameters.AddWithValue(name, NpgsqlDbType.Jsonb, "{}");
+    }
+
+    private static string BuildFlatFacecaptchaPayload(JsonElement root)
+    {
+        var payload = new Dictionary<string, object?>();
+
+        if (TryExtractString(root, "cause", out var cause) || TryExtractString(root, "causa", out cause))
+        {
+            payload["causa"] = cause;
+        }
+
+        if (TryExtractDouble(root, "codID", out var codId) || TryExtractDouble(root, "codId", out codId))
+        {
+            payload["codID"] = codId;
+        }
+
+        if (TryExtractJsonValue(root, "protocol", out var protocol) || TryExtractJsonValue(root, "protocolo", out protocol))
+        {
+            payload["protocolo"] = protocol;
+        }
+
+        if (TryExtractBool(root, "valid", out var valid) || TryExtractBool(root, "validado", out valid))
+        {
+            payload["validado"] = valid;
+        }
+
+        if (TryExtractString(root, "hash", out var hash))
+        {
+            payload["hash"] = hash;
+        }
+
+        if (TryExtractBool(root, "retry", out var retry))
+        {
+            payload["retry"] = retry;
+        }
+
+        if (TryExtractString(root, "scanResultBlob", out var scanResultBlob))
+        {
+            payload["scanResultBlob"] = scanResultBlob;
+        }
+
+        return JsonSerializer.Serialize(payload, JsonOptions);
+    }
+
+    private static bool TryExtractString(JsonElement root, string propertyName, out string? value)
+    {
+        value = null;
+        if (!root.TryGetProperty(propertyName, out var property) || property.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return false;
+        }
+
+        value = property.ValueKind == JsonValueKind.String ? property.GetString() : property.ToString();
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static bool TryExtractDouble(JsonElement root, string propertyName, out double value)
+    {
+        value = default;
+        if (!root.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.Number => property.TryGetDouble(out value),
+            JsonValueKind.String => double.TryParse(property.GetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value),
+            _ => false
+        };
+    }
+
+    private static bool TryExtractBool(JsonElement root, string propertyName, out bool value)
+    {
+        value = default;
+        if (!root.TryGetProperty(propertyName, out var property))
+        {
+            return false;
+        }
+
+        switch (property.ValueKind)
+        {
+            case JsonValueKind.True:
+                value = true;
+                return true;
+            case JsonValueKind.False:
+                value = false;
+                return true;
+            case JsonValueKind.String:
+                return bool.TryParse(property.GetString(), out value);
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryExtractJsonValue(JsonElement root, string propertyName, out object? value)
+    {
+        value = null;
+        if (!root.TryGetProperty(propertyName, out var property) || property.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return false;
+        }
+
+        value = property.ValueKind switch
+        {
+            JsonValueKind.String => property.GetString(),
+            JsonValueKind.Number when property.TryGetInt64(out var longValue) => longValue,
+            JsonValueKind.Number when property.TryGetDouble(out var doubleValue) => doubleValue,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => property.GetRawText()
+        };
+        return true;
     }
 
     private static DeviceLocation? ParseDeviceLocation(string? deviceLocationJson)
