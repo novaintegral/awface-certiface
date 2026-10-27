@@ -31,27 +31,13 @@ public sealed class CertifaceClient
 
         _logger.LogInformation("Obtendo token Certiface para JourneyId {JourneyId} e TenantId {TenantId}.", journey.Id, journey.Tenant.Id);
         var token = await GetCredentialTokenAsync(credential, cancellationToken);
-        _logger.LogInformation(
-            "Token Certiface obtido, expires={Expires}. Gerando appkey para JourneyId {JourneyId}, ExternalClientId {ExternalClientId}.",
-            token.Expires,
-            journey.Id,
-            journey.Subject.ExternalClientId
-        );
+        _logger.LogInformation("Token Certiface obtido. Gerando appkey para JourneyId {JourneyId}.", journey.Id);
 
         var serializedToken = JsonSerializer.Serialize(new
         {
             token = token.Token,
             expires = token.Expires
         });
-        _logger.LogInformation("Payload appkey preparado com token JSON em camelCase e nascimento {BirthDate}.", journey.Subject.BirthDate.ToString("dd/MM/yyyy"));
-        _logger.LogInformation(
-            "Campos appkey enviados: user={User}; tokenKeys=token,expires; cpfLength={CpfLength}; nomeLength={NameLength}; nascimento={BirthDate}; idExternoCliente={ExternalClientId}.",
-            credential.ProviderUser,
-            JourneyValidator.DigitsOnly(journey.Subject.Cpf).Length,
-            journey.Subject.FullName.Length,
-            journey.Subject.BirthDate.ToString("dd/MM/yyyy"),
-            journey.Subject.ExternalClientId
-        );
         using var appkeyContent = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["user"] = credential.ProviderUser,
@@ -200,16 +186,13 @@ public sealed class CertifaceClient
         });
     }
 
-    private static string GetRequiredString(JsonElement payload, string propertyName)
+    public static string GetRequiredString(JsonElement payload, string propertyName)
     {
         if (!payload.TryGetProperty(propertyName, out var property)
             || property.ValueKind != JsonValueKind.String
             || string.IsNullOrWhiteSpace(property.GetString()))
         {
-            throw new ArgumentException(
-                $"O payload de process-request deve conter o campo textual obrigatório '{propertyName}'.",
-                nameof(payload)
-            );
+            throw new ArgumentException($"O payload do SDK deve conter o campo textual obrigatório '{propertyName}'.");
         }
 
         return property.GetString()!;
@@ -255,10 +238,10 @@ public sealed class CertifaceClient
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         _logger.LogWarning(
-            "Certiface operation {Operation} failed with status {StatusCode}. Body: {Body}",
+            "Operação Certiface {Operation} falhou com status {StatusCode}. Body (truncado): {Body}",
             operation,
             (int)response.StatusCode,
-            body
+            body.Length > 500 ? body[..500] + "…" : body
         );
 
         throw new CertifaceProviderException(operation, (int)response.StatusCode, body);

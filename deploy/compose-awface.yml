@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-awface}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-assinaweb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
       TZ: ${TZ:-America/Sao_Paulo}
     volumes:
       - ./docker-data/postgres-awface:/var/lib/postgresql/data
@@ -18,7 +18,7 @@ services:
       retries: 10
 
   awface-api:
-    image: "novaintegral/awface-api:${AWFACE_VERSION:-1.0.3}"
+    image: "novaintegral/awface-api:${AWFACE_VERSION:-1.1.0}"
     container_name: awface-api
     restart: unless-stopped
     depends_on:
@@ -27,33 +27,42 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
       ASPNETCORE_URLS: "http://+:5500"
-      AWFACE_VERSION: "${AWFACE_VERSION:-1.0.3}"
+      AWFACE_VERSION: "${AWFACE_VERSION:-1.1.0}"
       AWFACE_BUILD_COMMIT: "${AWFACE_BUILD_COMMIT:-unknown}"
       AWFACE_BUILD_DATE: "${AWFACE_BUILD_DATE:-unknown}"
       TZ: "${TZ:-America/Sao_Paulo}"
-      ConnectionStrings__Awface: "Host=awface-db;Port=5432;Database=${POSTGRES_DB:-awface};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-assinaweb};Search Path=public;Include Error Detail=true"
+      ConnectionStrings__Awface: "Host=awface-db;Port=5432;Database=${POSTGRES_DB:-awface};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env};Search Path=public"
       Awface__Schema: "public"
       Awface__FrontendBaseUrl: "${AWFACE_FRONTEND_BASE_URL:-http://localhost:5580}"
       Awface__LivenessAppkeyLifetimeMinutes: "${AWFACE_LIVENESS_APPKEY_LIFETIME_MINUTES:-20}"
       Awface__LivenessEngine: "${AWFACE_LIVENESS_ENGINE:-V9}"
-      Awface__Homologation__AcceptNonProcessedResultAfterCompleteNotification: "${AWFACE_HOMOLOGATION_ACCEPT_NON_PROCESSED_RESULT:-false}"
+      Awface__TrustForwardedHeaders: "true"
+      Awface__Security__DataEncryptionKey: "${AWFACE_DATA_ENCRYPTION_KEY:?Defina AWFACE_DATA_ENCRYPTION_KEY no .env}"
+      Awface__Security__TokenSigningKey: "${AWFACE_TOKEN_SIGNING_KEY:-}"
+      Awface__Security__AdminTokenLifetimeMinutes: "${AWFACE_ADMIN_TOKEN_LIFETIME_MINUTES:-60}"
+      Awface__Security__JourneyTokenLifetimeMinutes: "${AWFACE_JOURNEY_TOKEN_LIFETIME_MINUTES:-120}"
+      Awface__Webhook__MaxAttempts: "${AWFACE_WEBHOOK_MAX_ATTEMPTS:-10}"
+      Awface__Webhook__TimeoutSeconds: "${AWFACE_WEBHOOK_TIMEOUT_SECONDS:-10}"
       Awface__FaceStorage__RootPath: "${AWFACE_FACE_STORAGE_ROOT_PATH:-/app/storage/faces}"
-      Awface__FaceStorage__EncryptionKey: "${AWFACE_FACE_STORAGE_ENCRYPTION_KEY:-troque-esta-chave-em-producao}"
-      Awface__Admin__Email: "${AWFACE_ADMIN_EMAIL:-admin@awface.local}"
-      Awface__Admin__Password: "${AWFACE_ADMIN_PASSWORD:-Awface@123}"
+      Awface__FaceStorage__EncryptionKey: "${AWFACE_FACE_STORAGE_ENCRYPTION_KEY:?Defina AWFACE_FACE_STORAGE_ENCRYPTION_KEY no .env}"
+      Awface__FaceStorage__PreviousEncryptionKeys__0: "${AWFACE_FACE_STORAGE_PREVIOUS_ENCRYPTION_KEY:-}"
+      Awface__Admin__Email: "${AWFACE_ADMIN_EMAIL:-}"
+      Awface__Admin__Password: "${AWFACE_ADMIN_PASSWORD:-}"
       Awface__Cors__AllowedOrigins__0: "${AWFACE_FRONTEND_BASE_URL:-http://localhost:5580}"
       Certiface__BaseUrl: "${CERTIFACE_BASE_URL:-https://hml.certiface.com.br}"
       Certiface__ResultBaseUrl: "${CERTIFACE_RESULT_BASE_URL:-https://hml.certiface.com.br:8443}"
       Logging__File__Enabled: "true"
       Logging__File__Directory: logs
+      Logging__File__RetentionDays: "${AWFACE_LOG_RETENTION_DAYS:-30}"
     ports:
-      - "${AWFACE_API_PORT:-5500}:5500"
+      # Hosts devem usar o Nginx (prefixo /api). Exponha a porta da API apenas com AWFACE_API_BIND=0.0.0.0.
+      - "${AWFACE_API_BIND:-127.0.0.1}:${AWFACE_API_PORT:-5500}:5500"
     volumes:
       - ./docker-data/api-logs:/app/logs
       - ./docker-data/awface-storage:/app/storage
 
   awface-front:
-    image: "novaintegral/awface-front:${AWFACE_VERSION:-1.0.3}"
+    image: "novaintegral/awface-front:${AWFACE_VERSION:-1.1.0}"
     container_name: awface-front
     restart: unless-stopped
     depends_on:

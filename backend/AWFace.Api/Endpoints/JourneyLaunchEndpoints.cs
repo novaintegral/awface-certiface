@@ -4,6 +4,7 @@ using AWFace.Api.Configuration;
 using AWFace.Api.Contracts;
 using AWFace.Api.Data;
 using AWFace.Api.Domain;
+using AWFace.Api.Security;
 using AWFace.Api.Services;
 using Microsoft.Extensions.Options;
 
@@ -11,6 +12,7 @@ namespace AWFace.Api.Endpoints;
 
 public static class JourneyLaunchEndpoints
 {
+    public const string PublicRateLimitPolicy = "journey-public";
     private static readonly TimeSpan LaunchTokenLifetime = TimeSpan.FromMinutes(20);
 
     public static IEndpointRouteBuilder MapJourneyLaunchEndpoints(this IEndpointRouteBuilder app)
@@ -34,7 +36,7 @@ public static class JourneyLaunchEndpoints
             var tenant = await repository.GetTenantByTokenAsync(request.IntegrationToken, cancellationToken);
             if (tenant is null)
             {
-                return Results.BadRequest(new[] { new { field = "integrationToken", message = "Token de integraÃ§Ã£o nÃ£o encontrado." } });
+                return Results.BadRequest(new[] { new { field = "integrationToken", message = "Token de integração não encontrado." } });
             }
 
             if (tenant.Status != TenantStatus.ACTIVE)
@@ -44,7 +46,7 @@ public static class JourneyLaunchEndpoints
 
             if (!tenant.Credentials.Any(item => item.JourneyType == request.JourneyType))
             {
-                return Results.BadRequest(new[] { new { field = "journeyType", message = "Tipo de jornada nÃ£o habilitado para este tenant." } });
+                return Results.BadRequest(new[] { new { field = "journeyType", message = "Tipo de jornada não habilitado para este tenant." } });
             }
 
             var launchToken = CreateLaunchToken();
@@ -73,6 +75,8 @@ public static class JourneyLaunchEndpoints
         group.MapPost("/{launchToken}/consume", async (
             string launchToken,
             AwfaceRepository repository,
+            SignedTokenService tokens,
+            IOptions<AwfaceOptions> options,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(launchToken))
@@ -86,8 +90,13 @@ public static class JourneyLaunchEndpoints
                 return Results.NotFound(new { message = "Token de lançamento inválido ou expirado." });
             }
 
-            return Results.Ok(new JourneyLaunchResolveResponse(journey));
-        });
+            var sessionToken = tokens.Issue(
+                SignedTokenService.JourneyPurpose,
+                journey.Id.ToString(),
+                TimeSpan.FromMinutes(Math.Clamp(options.Value.Security.JourneyTokenLifetimeMinutes, 10, 1440))
+            );
+            return Results.Ok(new JourneyLaunchResolveResponse(JourneySessionResponse.From(journey, sessionToken)));
+        }).RequireRateLimiting(PublicRateLimitPolicy);
 
         return app;
     }

@@ -24,8 +24,8 @@ The production-style host integration starts server-to-server:
 3. The Host redirects the user to `/#/journey-launch?token=...`.
 4. Angular consumes the token, stores the resolved journey locally and displays the user consent screen.
 5. After explicit user consent, Angular registers the decision, creates the Certiface appkey through AWFace.Api and redirects to `/#/journey`.
-6. After successful SDK submission, AWFace processes the SDK result and calls the Tenant `UrlCallback` without waiting for a Certiface provider callback.
-7. For `codID = 200`, AWFace also queries `document/result`, persists the enriched result and stores the frontal face asset before calling the Tenant callback.
+6. After successful SDK submission, AWFace processes the SDK result and enqueues the Tenant `UrlCallback` (outbox with retries) without waiting for a Certiface provider callback.
+7. For `codID = 200`, AWFace also queries `document/result`, persists the enriched result and stores the frontal face asset before enqueuing the Tenant callback.
 8. The user is sent to `/#/journey-completion`, which reflects the Tenant callback delivery state.
 
 The `launchToken` can be reused while it is valid. AWFace only rejects invalid or expired launch tokens. The higher-priority expiration control is the liveness provider `appkey`: AWFace reuses an existing appkey only while it is inside `Awface:LivenessAppkeyLifetimeMinutes`; after that window, AWFace requests a fresh provider appkey.
@@ -73,7 +73,7 @@ Main Host-facing endpoints:
 
 Internal browser/SDK/admin endpoints are intentionally not part of the Host contract.
 
-The Angular service uses these endpoints first and still falls back to localStorage for local development when the backend is not available.
+Internal browser endpoints require the journey session token (`X-AWFace-Journey-Token`) issued when the launch token is consumed.
 
 ## Certiface flow
 
@@ -120,9 +120,35 @@ The detailed implementation record is available in
 
 ## Admin
 
-The master admin login is intentionally hardcoded for this first slice:
+Administradores ficam em `awface_admin_user` com senha PBKDF2-SHA256. O
+primeiro usuário é criado a partir de `Awface:Admin:Email`/`Password`
+(`AWFACE_ADMIN_EMAIL`/`AWFACE_ADMIN_PASSWORD`) quando a tabela está vazia.
 
-- email: `admin@awface.local`
-- password: `Awface@123`
+`POST /api/awface/admin/login` devolve um token assinado (HMAC-SHA256) exigido
+em `Authorization: Bearer` por todas as demais rotas `/api/awface/admin/*`.
+O frontend guarda o token apenas no `sessionStorage` e protege as telas com
+`adminGuard`. As respostas administrativas nunca incluem a senha Certiface nem
+o client secret OAuth; campos de segredo vazios no cadastro mantêm o valor atual.
 
-Replace this with persisted users, password hashing, MFA and role-based access before production use.
+Pendências para fases seguintes: gestão de múltiplos usuários pela interface,
+MFA e perfis de acesso.
+
+## Segurança dos dados (1.1.0)
+
+- CPF, nome, nascimento, senhas Certiface e client secrets OAuth são gravados
+  com AES-256-GCM (`enc:v1:`), chave `Awface:Security:DataEncryptionKey`.
+- `cpf_hash` usa HMAC-SHA256 com chave derivada da chave mestra.
+- Dados legados em Base64 são recriptografados automaticamente na inicialização.
+- A API não inicia fora de `Development` com chaves ausentes, fracas ou de exemplo.
+- O navegador recebe um token de sessão da jornada (`X-AWFace-Journey-Token`)
+  exigido nos endpoints internos de consentimento, appkey, conclusão e SDK.
+
+## Confiabilidade (1.1.0)
+
+- Webhooks do Tenant passam por `awface_callback_outbox` e são entregues pelo
+  `CallbackDispatcher` (serviço em segundo plano) com retentativa exponencial e
+  assinatura HMAC (`X-AWFace-Signature`).
+- Submissões do SDK são deduplicadas em `awface_sdk_request` por
+  appkey + conteúdo; repetições recebem a resposta armazenada.
+- O processamento da submissão não depende da conexão do navegador.
+- Erros não tratados retornam ProblemDetails com `traceId`.

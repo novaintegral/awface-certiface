@@ -147,20 +147,44 @@ public sealed class FaceAssetStorage
         return encrypted;
     }
 
+    /// <summary>
+    /// Tenta a chave atual e, em seguida, as chaves anteriores (rotação de chave sem perder imagens já gravadas).
+    /// </summary>
     private byte[] Decrypt(byte[] encrypted)
     {
-        var key = GetEncryptionKey();
         var offset = EncryptedFileMagic.Length;
-        var nonce = encrypted.AsSpan(offset, NonceSize);
+        var nonce = encrypted.AsSpan(offset, NonceSize).ToArray();
         offset += NonceSize;
-        var tag = encrypted.AsSpan(offset, TagSize);
+        var tag = encrypted.AsSpan(offset, TagSize).ToArray();
         offset += TagSize;
-        var ciphertext = encrypted.AsSpan(offset);
-        var plaintext = new byte[ciphertext.Length];
+        var ciphertext = encrypted.AsSpan(offset).ToArray();
 
-        using var aes = new AesGcm(key, TagSize);
-        aes.Decrypt(nonce, ciphertext, tag, plaintext);
-        return plaintext;
+        CryptographicException? lastError = null;
+        foreach (var key in GetDecryptionKeys())
+        {
+            var plaintext = new byte[ciphertext.Length];
+            try
+            {
+                using var aes = new AesGcm(key, TagSize);
+                aes.Decrypt(nonce, ciphertext, tag, plaintext);
+                return plaintext;
+            }
+            catch (CryptographicException exception)
+            {
+                lastError = exception;
+            }
+        }
+
+        throw lastError ?? new CryptographicException("Nenhuma chave de face configurada.");
+    }
+
+    private IEnumerable<byte[]> GetDecryptionKeys()
+    {
+        yield return GetEncryptionKey();
+        foreach (var previousKey in _options.PreviousEncryptionKeys.Where(item => !string.IsNullOrWhiteSpace(item)))
+        {
+            yield return DeriveKey(previousKey);
+        }
     }
 
     private byte[] GetEncryptionKey()
@@ -170,7 +194,12 @@ public sealed class FaceAssetStorage
             throw new InvalidOperationException("Awface:FaceStorage:EncryptionKey não configurada.");
         }
 
-        var value = _options.EncryptionKey.Trim();
+        return DeriveKey(_options.EncryptionKey);
+    }
+
+    private static byte[] DeriveKey(string configuredKey)
+    {
+        var value = configuredKey.Trim();
         try
         {
             var keyBytes = Convert.FromBase64String(value);

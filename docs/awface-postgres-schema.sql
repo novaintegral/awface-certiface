@@ -59,6 +59,7 @@ CREATE TABLE awface_liveness_journey (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL REFERENCES awface_tenant(id),
   journey_type journey_type NOT NULL,
+  liveness_engine varchar(3) NOT NULL DEFAULT 'V10' CHECK (liveness_engine IN ('V9', 'V10')),
   cpf_hash text NOT NULL,
   cpf_ciphertext text NOT NULL,
   full_name_ciphertext text NOT NULL,
@@ -87,6 +88,46 @@ CREATE UNIQUE INDEX ux_awface_liveness_journey_launch_token_hash
 CREATE INDEX ix_awface_liveness_journey_launch_expires_at
   ON awface_liveness_journey (launch_expires_at)
   WHERE launch_token_hash IS NOT NULL;
+
+CREATE TABLE awface_liveness_appkey_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  appkey text NOT NULL UNIQUE,
+  liveness_engine varchar(3) NOT NULL CHECK (liveness_engine IN ('V9', 'V10')),
+  attempt integer NOT NULL,
+  issued_at timestamptz NOT NULL DEFAULT now(),
+  superseded_at timestamptz,
+  UNIQUE (journey_id, attempt)
+);
+
+CREATE INDEX ix_awface_liveness_appkey_history_journey
+  ON awface_liveness_appkey_history (journey_id, issued_at);
+
+CREATE TABLE awface_liveness_submission (
+  appkey text PRIMARY KEY,
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  liveness_engine varchar(3) NOT NULL CHECK (liveness_engine IN ('V9', 'V10')),
+  provider_response jsonb NOT NULL,
+  device_location jsonb,
+  submitted_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_awface_liveness_submission_journey
+  ON awface_liveness_submission (journey_id, submitted_at);
+
+CREATE TABLE awface_provider_notification (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  appkey text NOT NULL,
+  provider_status varchar(80) NOT NULL,
+  attempts integer NOT NULL DEFAULT 1,
+  processing_started_at timestamptz,
+  processed_at timestamptz,
+  last_error text,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (appkey)
+);
 
 CREATE TABLE awface_liveness_consent (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -126,9 +167,29 @@ CREATE TABLE awface_liveness_face_asset (
   UNIQUE (journey_id, asset_type)
 );
 
+CREATE TABLE awface_callback_outbox (
+  id uuid PRIMARY KEY,
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  event_key text NOT NULL UNIQUE,
+  payload jsonb NOT NULL,
+  status varchar(16) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENDING', 'DELIVERED', 'FAILED')),
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  locked_until timestamptz,
+  last_response_status integer,
+  last_error text,
+  delivered_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_awface_callback_outbox_due ON awface_callback_outbox (status, next_attempt_at);
+CREATE INDEX ix_awface_callback_outbox_journey ON awface_callback_outbox (journey_id, created_at DESC);
+
 CREATE TABLE awface_callback_delivery (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  outbox_id uuid REFERENCES awface_callback_outbox(id),
   target_url text NOT NULL,
   request_payload jsonb NOT NULL,
   response_status integer,
@@ -137,6 +198,21 @@ CREATE TABLE awface_callback_delivery (
   delivered_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE awface_sdk_request (
+  request_key text PRIMARY KEY,
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  appkey text NOT NULL,
+  operation varchar(40) NOT NULL,
+  status varchar(16) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED')),
+  response_status integer,
+  response_content_type text,
+  response_body text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_awface_sdk_request_updated_at ON awface_sdk_request (updated_at);
 
 CREATE TABLE awface_schema_migration (
   id text PRIMARY KEY,

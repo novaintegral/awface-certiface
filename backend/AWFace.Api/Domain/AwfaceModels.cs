@@ -87,10 +87,37 @@ public sealed record JourneySession(
     DateTimeOffset UpdatedAt
 );
 
-public sealed record CallbackDeliveryStatus(
-    int? ResponseStatus,
-    string? ResponseBody,
-    DateTimeOffset DeliveredAt
+public enum CallbackOutboxState
+{
+    PENDING,
+    SENDING,
+    DELIVERED,
+    FAILED
+}
+
+/// <summary>Item da fila de entrega do webhook ao Tenant (padrão outbox).</summary>
+public sealed record CallbackOutboxStatus(
+    Guid Id,
+    CallbackOutboxState State,
+    int Attempts,
+    int? LastResponseStatus,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DeliveredAt
+);
+
+public sealed record CallbackOutboxItem(
+    Guid Id,
+    Guid JourneyId,
+    Guid EventId,
+    string PayloadJson,
+    int Attempts
+);
+
+public sealed record AdminUser(
+    Guid Id,
+    string Email,
+    string PasswordHash,
+    bool Active
 );
 
 public sealed record JourneyFaceAsset(

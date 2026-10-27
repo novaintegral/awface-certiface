@@ -11,7 +11,9 @@ export type AwfaceConsentDecision = 'ACCEPTED' | 'REFUSED';
 export interface AwfaceLivenessCredential {
   journeyType: AwfaceJourneyType;
   providerUser: string;
-  providerPass: string;
+  /** Enviada somente ao alterar. A API nunca devolve a senha; vazio mantém a atual. */
+  providerPass?: string;
+  hasProviderPass?: boolean;
 }
 
 export interface AwfaceTenant {
@@ -30,7 +32,9 @@ export interface AwfaceTenant {
   callbackOAuthEnabled: boolean;
   callbackOAuthTokenUrl?: string;
   callbackOAuthClientId?: string;
+  /** Enviado somente ao alterar. A API nunca devolve o segredo; vazio mantém o atual. */
   callbackOAuthClientSecret?: string;
+  hasCallbackOAuthClientSecret?: boolean;
   credentials: AwfaceLivenessCredential[];
   createdAt: string;
   updatedAt: string;
@@ -64,12 +68,27 @@ export interface AwfaceJourneyLaunchResolveResponse {
   session: AwfaceJourneySession;
 }
 
+/** Dados públicos do Tenant expostos ao usuário final (sem tokens nem credenciais). */
+export interface AwfaceJourneyTenant {
+  id: string;
+  name: string;
+  termsUrl: string;
+  privacyUrl: string;
+  theme: AwfaceTenantTheme;
+  primaryColor: string;
+  secondaryColor: string;
+  logoBase64?: string;
+}
+
 export interface AwfaceJourneySession {
   id: string;
-  tenant: AwfaceTenant;
+  tenant: AwfaceJourneyTenant;
   journeyType: AwfaceJourneyType;
   livenessEngine: AwfaceLivenessEngine;
-  subject: AwfaceJourneySubject;
+  subject: Pick<AwfaceJourneySubject, 'fullName'>;
+  /** Token da sessão da jornada, enviado no header X-AWFace-Journey-Token. */
+  sessionToken?: string;
+  sessionTokenExpiresAt?: string;
   status: 'CREATED' | 'CONSENT_ACCEPTED' | 'CONSENT_REFUSED' | 'APPKEY_CREATED' | 'LIVENESS_STARTED' | 'COMPLETED' | 'FAILED';
   appkey?: string;
   consentAt?: string;
@@ -88,7 +107,15 @@ export interface AwfaceAdminCredentials {
   password: string;
 }
 
-export type AwfaceCompletionStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
+export interface AwfaceAdminLoginResponse {
+  authenticated: boolean;
+  accessToken: string;
+  expiresAt: string;
+  email: string;
+}
+
+/** DEFERRED: prova de vida concluída; a entrega ao sistema de origem segue em retentativa automática. */
+export type AwfaceCompletionStatus = 'PENDING' | 'SUCCESS' | 'DEFERRED' | 'FAILED';
 
 export interface AwfaceCompletionResult {
   status: AwfaceCompletionStatus;

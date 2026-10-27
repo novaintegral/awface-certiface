@@ -14,6 +14,7 @@ import { JourneyLaunchComponent } from './journey-launch/journey-launch.componen
 import { JourneyCompletionComponent } from './journey-completion/journey-completion.component';
 import { AdminLoginComponent } from './admin/admin-login.component';
 import { AdminTenantsComponent } from './admin/admin-tenants.component';
+import { adminGuard } from './admin/admin.guard';
 
 const routes: Routes = [
   {
@@ -40,6 +41,7 @@ const routes: Routes = [
   {
     path: 'admin/tenants',
     component: AdminTenantsComponent,
+    canActivate: [adminGuard],
   },
   {
     path: 'home',

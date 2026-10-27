@@ -20,12 +20,13 @@ export class AdminLoginComponent {
     this.error = '';
 
     this.awfaceService.loginAdminRemote({ email: this.email, password: this.password }).subscribe(authenticated => {
+      this.password = '';
       if (authenticated) {
         this.router.navigateByUrl('/admin/tenants');
         return;
       }
 
-      this.error = 'Login ou senha inválidos.';
+      this.error = 'Login ou senha inválidos, ou muitas tentativas. Aguarde um minuto e tente novamente.';
     });
   }
 }

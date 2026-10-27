@@ -169,7 +169,7 @@ public sealed class AwfaceSchemaInitializer
         await ApplyMigrationAsync(
             connection,
             "202606180001_tenant_callback_oauth",
-            "Adiciona autenticaÃ§Ã£o OAuth2 ao webhook do tenant.",
+            "Adiciona autenticação OAuth2 ao webhook do tenant.",
             """
             alter table awface_tenant
                 add column if not exists callback_oauth_enabled boolean not null default false,
@@ -196,7 +196,7 @@ public sealed class AwfaceSchemaInitializer
         await ApplyMigrationAsync(
             connection,
             "202606240002_liveness_appkey_history",
-            "Preserva todas as appkeys emitidas para diagnÃ³stico das jornadas.",
+            "Preserva todas as appkeys emitidas para diagnóstico das jornadas.",
             """
             create table if not exists awface_liveness_appkey_history (
                 id uuid primary key default gen_random_uuid(),
@@ -230,7 +230,7 @@ public sealed class AwfaceSchemaInitializer
         await ApplyMigrationAsync(
             connection,
             "202606240003_provider_completion_webhook",
-            "Armazena submissÃµes de liveness e controla notificaÃ§Ãµes terminais da Certiface.",
+            "Armazena submissões de liveness e controla notificações terminais da Certiface.",
             """
             create table if not exists awface_liveness_submission (
                 appkey text primary key,
@@ -296,6 +296,13 @@ public sealed class AwfaceSchemaInitializer
             create index if not exists ix_awface_liveness_attempt_history_journey
                 on awface_liveness_attempt_history (journey_id, created_at);
             """,
+            cancellationToken
+        );
+        await ApplyMigrationAsync(
+            connection,
+            MigrationSql.SecurityReliabilityId,
+            MigrationSql.SecurityReliabilityDescription,
+            MigrationSql.SecurityReliability,
             cancellationToken
         );
         _logger.LogInformation("Schema AWFace verificado e migrations aplicadas.");

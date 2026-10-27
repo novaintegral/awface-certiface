@@ -44,10 +44,13 @@ export class SampleAppNetworkingRequest {
 
       request.open("POST", processRequestUrl);
       request.setRequestHeader("Content-Type", "application/json");
+      const journeyToken = runtime.journeyToken || window.sessionStorage.getItem('awface.journeyToken');
+      if (journeyToken) {
+        request.setRequestHeader("X-AWFace-Journey-Token", journeyToken);
+      }
 
       request.onload = (response: any): any => {
         const responseJSON = this.parseResponse(response.target.response);
-        console.log(responseJSON)
 
         const responseBlob: string | null = this.getResponseBlobOrHandleError(request);
 
@@ -115,8 +118,13 @@ export class SampleAppNetworkingRequest {
     return null;
   };
 
+  /**
+   * A AWFace.Api já repete chamadas ao provedor em erros 5xx e deduplica submissões repetidas.
+   * O navegador só repete quando a resposta se perdeu (falha de rede), quando a submissão ainda
+   * está em processamento (409) ou em indisponibilidade do gateway (503/504).
+   */
   private static shouldRetryTransientError = (status: number, attempt: number): boolean => {
-    return attempt < this.maxTransientRetries && status >= 500 && status < 600;
+    return attempt < this.maxTransientRetries && (status === 0 || status === 409 || status === 503 || status === 504);
   };
 
   private static getDeviceLocation = (): any | null => {

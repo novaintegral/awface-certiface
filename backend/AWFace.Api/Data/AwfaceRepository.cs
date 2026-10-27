@@ -8,7 +8,7 @@ using NpgsqlTypes;
 
 namespace AWFace.Api.Data;
 
-public sealed class AwfaceRepository
+public sealed partial class AwfaceRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly AwfaceDb _db;
@@ -73,6 +73,22 @@ public sealed class AwfaceRepository
             ? $"awf_{Guid.NewGuid():N}"
             : request.IntegrationToken.Trim();
 
+        // Segredos não são devolvidos ao admin; campos vazios significam "manter o valor atual".
+        var existingTenant = request.Id is null ? null : await GetTenantByIdAsync(connection, tenantId, cancellationToken);
+        var oauthClientSecret = NormalizeOptional(request.CallbackOAuthClientSecret) ?? existingTenant?.CallbackOAuthClientSecret;
+        var credentials = new List<(JourneyType JourneyType, string ProviderUser, string ProviderPass)>();
+        foreach (var credential in request.Credentials)
+        {
+            var providerPass = NormalizeOptional(credential.ProviderPass)
+                ?? existingTenant?.Credentials.FirstOrDefault(item => item.JourneyType == credential.JourneyType)?.ProviderPass;
+            if (string.IsNullOrWhiteSpace(providerPass))
+            {
+                throw new ArgumentException($"Informe a senha do provedor para a jornada {credential.JourneyType}.");
+            }
+
+            credentials.Add((credential.JourneyType, credential.ProviderUser.Trim(), providerPass));
+        }
+
         await using (var command = connection.CreateCommand())
         {
             command.Transaction = transaction;
@@ -122,7 +138,7 @@ public sealed class AwfaceRepository
             command.Parameters.AddWithValue("callback_oauth_enabled", request.CallbackOAuthEnabled);
             command.Parameters.AddWithValue("callback_oauth_token_url", (object?)NormalizeOptional(request.CallbackOAuthTokenUrl) ?? DBNull.Value);
             command.Parameters.AddWithValue("callback_oauth_client_id", (object?)NormalizeOptional(request.CallbackOAuthClientId) ?? DBNull.Value);
-            command.Parameters.AddWithValue("callback_oauth_client_secret_ciphertext", ProtectOptional(request.CallbackOAuthClientSecret));
+            command.Parameters.AddWithValue("callback_oauth_client_secret_ciphertext", ProtectOptional(oauthClientSecret));
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -134,7 +150,7 @@ public sealed class AwfaceRepository
             await deleteCredentials.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        foreach (var credential in request.Credentials)
+        foreach (var credential in credentials)
         {
             await using var credentialCommand = connection.CreateCommand();
             credentialCommand.Transaction = transaction;
@@ -146,14 +162,14 @@ public sealed class AwfaceRepository
                 """;
             credentialCommand.Parameters.AddWithValue("tenant_id", tenantId);
             credentialCommand.Parameters.AddWithValue("journey_type", credential.JourneyType.ToString());
-            credentialCommand.Parameters.AddWithValue("provider_user", credential.ProviderUser.Trim());
+            credentialCommand.Parameters.AddWithValue("provider_user", credential.ProviderUser);
             credentialCommand.Parameters.AddWithValue("provider_pass_ciphertext", _protector.Protect(credential.ProviderPass));
             await credentialCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
         return await GetTenantByIdAsync(connection, tenantId, cancellationToken)
-            ?? throw new InvalidOperationException("Tenant salvo, mas nÃƒÆ’Ã‚Â£o encontrado.");
+            ?? throw new InvalidOperationException("Tenant salvo, mas não encontrado.");
     }
 
     public async Task<Tenant?> UpdateTenantStatusAsync(Guid tenantId, TenantStatus status, CancellationToken cancellationToken)
@@ -244,7 +260,7 @@ public sealed class AwfaceRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetJourneyByIdAsync(connection, journeyId, cancellationToken)
-            ?? throw new InvalidOperationException("Jornada criada, mas nÃƒÆ’Ã‚Â£o encontrada.");
+            ?? throw new InvalidOperationException("Jornada criada, mas não encontrada.");
     }
 
     public async Task<JourneySession> CreateJourneyLaunchAsync(
@@ -290,7 +306,7 @@ public sealed class AwfaceRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetJourneyByIdAsync(connection, journeyId, cancellationToken)
-            ?? throw new InvalidOperationException("Jornada autonoma criada, mas nao encontrada.");
+            ?? throw new InvalidOperationException("Jornada autônoma criada, mas não encontrada.");
     }
 
     public async Task<JourneySession?> ConsumeJourneyLaunchAsync(string launchTokenHash, CancellationToken cancellationToken)
@@ -940,50 +956,6 @@ public sealed class AwfaceRepository
             reader.GetInt64(5),
             reader.GetString(6),
             reader.GetFieldValue<DateTimeOffset>(7)
-        );
-    }
-
-    public async Task RegisterCallbackDeliveryAsync(Guid journeyId, string targetUrl, object payload, int? responseStatus, string? responseBody, CancellationToken cancellationToken)
-    {
-        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            insert into awface_callback_delivery (
-                journey_id, target_url, request_payload, response_status, response_body, attempt, delivered_at, created_at
-            )
-            values (@journey_id, @target_url, cast(@request_payload as jsonb), @response_status, @response_body, 1, now(), now())
-            """;
-        command.Parameters.AddWithValue("journey_id", journeyId);
-        command.Parameters.AddWithValue("target_url", targetUrl);
-        command.Parameters.AddWithValue("request_payload", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(payload, JsonOptions));
-        command.Parameters.AddWithValue("response_status", (object?)responseStatus ?? DBNull.Value);
-        command.Parameters.AddWithValue("response_body", (object?)responseBody ?? DBNull.Value);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    public async Task<CallbackDeliveryStatus?> GetLatestCallbackDeliveryAsync(Guid journeyId, CancellationToken cancellationToken)
-    {
-        await using var connection = await _db.OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            select response_status, response_body, delivered_at
-            from awface_callback_delivery
-            where journey_id = @journey_id
-            order by created_at desc
-            limit 1
-            """;
-        command.Parameters.AddWithValue("journey_id", journeyId);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
-        {
-            return null;
-        }
-
-        return new CallbackDeliveryStatus(
-            reader.IsDBNull(0) ? null : reader.GetInt32(0),
-            reader.IsDBNull(1) ? null : reader.GetString(1),
-            reader.GetFieldValue<DateTimeOffset>(2)
         );
     }
 

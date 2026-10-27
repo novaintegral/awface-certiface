@@ -5,6 +5,7 @@ import { environment } from 'src/environments/environment';
 import {
   AWFACE_JOURNEY_LABELS,
   AwfaceAdminCredentials,
+  AwfaceAdminLoginResponse,
   AwfaceConsentDecision,
   AwfaceCompletionResult,
   AwfaceJourneyLaunchResolveResponse,
@@ -25,6 +26,7 @@ const TENANT_LOGO_URL_KEY = 'awface.tenantLogoUrl';
 const JOURNEY_SUBJECT_NAME_KEY = 'awface.journeySubjectName';
 const JOURNEY_TYPE_KEY = 'awface.journeyType';
 const LIVENESS_ENGINE_KEY = 'awface.livenessEngine';
+const JOURNEY_TOKEN_KEY = 'awface.journeyToken';
 const LEGACY_LOCAL_STORAGE_KEYS = [
   'awface.sessions',
   'awface.tenants',
@@ -39,40 +41,44 @@ const LEGACY_LOCAL_STORAGE_KEYS = [
 interface AwfaceRuntimeState {
   appkey?: string;
   deviceLocation?: unknown;
+  journeyToken?: string;
+}
+
+interface AwfaceAdminSession {
+  token: string;
+  expiresAt: string;
+  email: string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AwfaceService {
   private readonly apiBaseUrl = environment.awfaceApiUrl || '';
-  private readonly adminUser = environment.awfaceAdminUser;
   private activeSession: AwfaceJourneySession | null = null;
   private runtimeState: AwfaceRuntimeState = {};
 
   constructor(private http: HttpClient) {
     this.clearLegacySensitiveLocalStorage();
+    this.runtimeState.journeyToken = sessionStorage.getItem(JOURNEY_TOKEN_KEY) || undefined;
     (window as any).__awfaceRuntime = this.runtimeState;
   }
 
-  loginAdmin(credentials: AwfaceAdminCredentials): boolean {
-    const authenticated =
-      credentials.email === this.adminUser.email && credentials.password === this.adminUser.password;
-
-    if (authenticated) {
-      sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ loggedAt: new Date().toISOString() }));
-    }
-
-    return authenticated;
-  }
-
+  /** Autenticação exclusivamente no servidor; não há mais validação local de senha. */
   loginAdminRemote(credentials: AwfaceAdminCredentials): Observable<boolean> {
-    return this.http.post<{ authenticated: boolean }>(`${this.apiBaseUrl}/api/awface/admin/login`, credentials).pipe(
-      map(response => response.authenticated),
-      tap(authenticated => {
-        if (authenticated) {
-          sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ loggedAt: new Date().toISOString() }));
+    return this.http.post<AwfaceAdminLoginResponse>(`${this.apiBaseUrl}/api/awface/admin/login`, credentials).pipe(
+      map(response => {
+        if (!response?.authenticated || !response.accessToken) {
+          return false;
         }
+
+        const session: AwfaceAdminSession = {
+          token: response.accessToken,
+          expiresAt: response.expiresAt,
+          email: response.email,
+        };
+        sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+        return true;
       }),
-      catchError(() => of(this.loginAdmin(credentials)))
+      catchError(() => of(false))
     );
   }
 
@@ -82,7 +88,31 @@ export class AwfaceService {
   }
 
   isAdminAuthenticated(): boolean {
-    return Boolean(sessionStorage.getItem(ADMIN_SESSION_KEY));
+    return Boolean(this.getAdminToken());
+  }
+
+  getAdminToken(): string | null {
+    const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const session = JSON.parse(raw) as AwfaceAdminSession;
+      if (!session.token || !session.expiresAt || new Date(session.expiresAt).getTime() <= Date.now()) {
+        this.logoutAdmin();
+        return null;
+      }
+
+      return session.token;
+    } catch {
+      this.logoutAdmin();
+      return null;
+    }
+  }
+
+  getJourneyToken(): string | null {
+    return this.runtimeState.journeyToken || sessionStorage.getItem(JOURNEY_TOKEN_KEY);
   }
 
   listTenants(): Observable<AwfaceTenant[]> {
@@ -227,7 +257,7 @@ export class AwfaceService {
     return localStorage.getItem(TENANT_LOGO_URL_KEY) || this.getLogoSource(session?.tenant.logoBase64, fallback);
   }
 
-  getTenantThemeStyle(tenant?: AwfaceTenant | null): Record<string, string> {
+  getTenantThemeStyle(tenant?: Pick<AwfaceTenant, 'theme' | 'primaryColor' | 'secondaryColor'> | null): Record<string, string> {
     const primary = this.normalizeColor(tenant?.primaryColor, '#007060');
     const secondary = this.normalizeColor(tenant?.secondaryColor, '#315f88');
     const dark = tenant?.theme === 'DARK';
@@ -271,6 +301,7 @@ export class AwfaceService {
     localStorage.removeItem(LIVENESS_ENGINE_KEY);
     localStorage.removeItem('hasLiveness');
     localStorage.removeItem('awface.deviceLocation');
+    sessionStorage.removeItem(JOURNEY_TOKEN_KEY);
   }
 
   private markSessionAppkey(sessionId: string, appkey: string): void {
@@ -291,6 +322,12 @@ export class AwfaceService {
   }
 
   private persistActiveSession(session: AwfaceJourneySession): void {
+    if (session.sessionToken) {
+      this.runtimeState.journeyToken = session.sessionToken;
+      sessionStorage.setItem(JOURNEY_TOKEN_KEY, session.sessionToken);
+      (window as any).__awfaceRuntime = this.runtimeState;
+    }
+
     this.activeSession = session;
     sessionStorage.setItem(ACTIVE_SESSION_KEY, session.id);
     localStorage.setItem(TENANT_LOGO_URL_KEY, this.createJourneyLogoUrl(session.id));

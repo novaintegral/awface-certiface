@@ -246,7 +246,7 @@ export class FacetecV10Component implements OnInit, OnDestroy {
   private navigateToBlockedCompletion(): void {
     this.awfaceService.saveCompletionResult({
       status: 'PENDING',
-      message: 'Usu?rio bloqueado pelo provedor de liveness. Aguardando a confirma??o final da valida??o.',
+      message: 'Usuário bloqueado pelo provedor de liveness. Aguardando a confirmação final da validação.',
     });
 
     this.router.navigateByUrl('/journey-completion');

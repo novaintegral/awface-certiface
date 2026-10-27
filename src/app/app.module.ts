@@ -1,6 +1,6 @@
 import { BrowserModule } from '@angular/platform-browser';
 import { NgModule } from '@angular/core';
-import { HttpClientModule } from '@angular/common/http';
+import { HTTP_INTERCEPTORS, HttpClientModule } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 
 import { AppRoutingModule } from './app-routing.module';
@@ -21,6 +21,7 @@ import { JourneyLaunchComponent } from './journey-launch/journey-launch.componen
 import { JourneyCompletionComponent } from './journey-completion/journey-completion.component';
 import { AdminLoginComponent } from './admin/admin-login.component';
 import { AdminTenantsComponent } from './admin/admin-tenants.component';
+import { AwfaceAuthInterceptor } from './awface/awface-auth.interceptor';
 
 @NgModule({
   declarations: [
@@ -48,7 +49,9 @@ import { AdminTenantsComponent } from './admin/admin-tenants.component';
     HttpClientModule,
     FormsModule
   ],
-  providers: [],
+  providers: [
+    { provide: HTTP_INTERCEPTORS, useClass: AwfaceAuthInterceptor, multi: true }
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

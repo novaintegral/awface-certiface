@@ -12,6 +12,13 @@ backend/AWFace.Api/logs/
 backend/AWFace.Api/storage/
 docker-data/
 
+# Segredos de ambiente (use .env.example como modelo)
+.env
+.env.*
+!.env.example
+deploy/env
+deploy/.env
+
 # Node
 /node_modules
 npm-debug.log

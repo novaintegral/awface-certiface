@@ -48,6 +48,10 @@ jobs:
       - name: Validate Docker Compose
         env:
           AWFACE_VERSION: ${{ github.ref_name }}
+          # Valores fictícios apenas para validar a sintaxe; segredos reais nunca ficam no repositório.
+          POSTGRES_PASSWORD: ci-validation-only
+          AWFACE_DATA_ENCRYPTION_KEY: ci-validation-only
+          AWFACE_FACE_STORAGE_ENCRYPTION_KEY: ci-validation-only
         shell: bash
         run: |
           export AWFACE_VERSION="${AWFACE_VERSION#v}"

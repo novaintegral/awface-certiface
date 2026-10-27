@@ -51,8 +51,9 @@ export class JourneyCompletionComponent implements OnInit, OnDestroy {
     this.completionPolling?.unsubscribe();
   }
 
+  /** DEFERRED é exibido como sucesso: a prova de vida terminou e a entrega ao Host segue em retentativa. */
   get success(): boolean {
-    return this.result?.status === 'SUCCESS';
+    return this.result?.status === 'SUCCESS' || this.result?.status === 'DEFERRED';
   }
 
   get pending(): boolean {
@@ -123,7 +124,7 @@ export class JourneyCompletionComponent implements OnInit, OnDestroy {
       }
 
       this.completionPolling?.unsubscribe();
-      if (result.status === 'SUCCESS') {
+      if (this.success) {
         this.startCloseCountdown();
       }
     });

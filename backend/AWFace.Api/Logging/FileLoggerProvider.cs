@@ -98,8 +98,39 @@ internal sealed class FileLogger : ILogger
 
         lock (_writeLock)
         {
+            var isNewFile = !File.Exists(path);
             System.IO.Directory.CreateDirectory(directory);
             File.AppendAllText(path, line + Environment.NewLine);
+            if (isNewFile)
+            {
+                PurgeExpiredFiles(directory, options);
+            }
+        }
+    }
+
+    private static void PurgeExpiredFiles(string directory, FileLoggerOptions options)
+    {
+        if (options.RetentionDays <= 0)
+        {
+            return;
+        }
+
+        var limit = DateTime.UtcNow.AddDays(-options.RetentionDays);
+        foreach (var file in System.IO.Directory.EnumerateFiles(directory, $"{options.FileNamePrefix}-*.log"))
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(file) < limit)
+                {
+                    File.Delete(file);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
         }
     }
 

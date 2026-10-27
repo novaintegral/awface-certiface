@@ -3,6 +3,7 @@ using AWFace.Api.Contracts;
 using AWFace.Api.Configuration;
 using AWFace.Api.Data;
 using AWFace.Api.Domain;
+using AWFace.Api.Security;
 using AWFace.Api.Services;
 using Microsoft.Extensions.Options;
 
@@ -18,6 +19,7 @@ public static class JourneyEndpoints
             JourneyStartRequest request,
             HttpContext httpContext,
             AwfaceRepository repository,
+            SignedTokenService tokens,
             IOptions<AwfaceOptions> options,
             CancellationToken cancellationToken) =>
         {
@@ -30,7 +32,7 @@ public static class JourneyEndpoints
             var tenant = await repository.GetTenantByTokenAsync(request.IntegrationToken, cancellationToken);
             if (tenant is null)
             {
-                return Results.BadRequest(new[] { new { field = "integrationToken", message = "Token de integraÃƒÂ§ÃƒÂ£o nÃƒÂ£o encontrado." } });
+                return Results.BadRequest(new[] { new { field = "integrationToken", message = "Token de integração não encontrado." } });
             }
 
             if (tenant.Status != TenantStatus.ACTIVE)
@@ -40,7 +42,7 @@ public static class JourneyEndpoints
 
             if (!tenant.Credentials.Any(item => item.JourneyType == request.JourneyType))
             {
-                return Results.BadRequest(new[] { new { field = "journeyType", message = "Tipo de jornada nÃƒÂ£o habilitado para este tenant." } });
+                return Results.BadRequest(new[] { new { field = "journeyType", message = "Tipo de jornada não habilitado para este tenant." } });
             }
 
             var userAgent = httpContext.Request.Headers.UserAgent.ToString();
@@ -51,16 +53,27 @@ public static class JourneyEndpoints
                 userAgent,
                 cancellationToken
             );
-            return Results.Ok(journey);
-        });
+            var sessionToken = tokens.Issue(
+                SignedTokenService.JourneyPurpose,
+                journey.Id.ToString(),
+                TimeSpan.FromMinutes(Math.Clamp(options.Value.Security.JourneyTokenLifetimeMinutes, 10, 1440))
+            );
+            return Results.Ok(JourneySessionResponse.From(journey, sessionToken));
+        }).RequireRateLimiting(JourneyLaunchEndpoints.PublicRateLimitPolicy);
 
         group.MapPost("/{journeyId:guid}/consent", async (
             Guid journeyId,
             ConsentRequest request,
             HttpContext httpContext,
             AwfaceRepository repository,
+            SignedTokenService tokens,
             CancellationToken cancellationToken) =>
         {
+            if (!EndpointAccess.IsJourneyAuthorized(httpContext, tokens, journeyId))
+            {
+                return EndpointAccess.JourneyUnauthorized();
+            }
+
             var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
             if (journey is null)
             {
@@ -75,17 +88,24 @@ public static class JourneyEndpoints
                 cancellationToken
             );
 
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            return updated is null ? Results.NotFound() : Results.Ok(JourneySessionResponse.From(updated));
         });
 
         group.MapPost("/{journeyId:guid}/appkey", async (
             Guid journeyId,
             bool? force,
+            HttpContext httpContext,
             AwfaceRepository repository,
             CertifaceClient certiface,
+            SignedTokenService tokens,
             IOptions<AwfaceOptions> options,
             CancellationToken cancellationToken) =>
         {
+            if (!EndpointAccess.IsJourneyAuthorized(httpContext, tokens, journeyId))
+            {
+                return EndpointAccess.JourneyUnauthorized();
+            }
+
             var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
             if (journey is null)
             {
@@ -106,7 +126,7 @@ public static class JourneyEndpoints
                 || await repository.HasAcceptedConsentAsync(journeyId, cancellationToken);
             if (!CanIssueAppkey(journey, hasAcceptedConsent))
             {
-                return Results.BadRequest(new { message = "A jornada precisa estar ativa e com consentimento aceito antes da criacao da appkey." });
+                return Results.BadRequest(new { message = "A jornada precisa estar ativa e com consentimento aceito antes da criação da appkey." });
             }
 
             try
@@ -120,7 +140,7 @@ public static class JourneyEndpoints
                 return Results.Json(
                     new
                     {
-                        message = "NÃƒÂ£o foi possÃƒÂ­vel obter a appkey na Certiface.",
+                        message = "Não foi possível obter a appkey na Certiface.",
                         providerOperation = exception.Operation,
                         providerStatus = exception.StatusCode
                     },
@@ -131,9 +151,17 @@ public static class JourneyEndpoints
 
         group.MapGet("/{journeyId:guid}/completion", async (
             Guid journeyId,
+            HttpContext httpContext,
             AwfaceRepository repository,
+            SignedTokenService tokens,
+            IOptions<AwfaceOptions> options,
             CancellationToken cancellationToken) =>
         {
+            if (!EndpointAccess.IsJourneyAuthorized(httpContext, tokens, journeyId))
+            {
+                return EndpointAccess.JourneyUnauthorized();
+            }
+
             var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
             if (journey is null)
             {
@@ -143,45 +171,59 @@ public static class JourneyEndpoints
             var currentSubmission = string.IsNullOrWhiteSpace(journey.Appkey)
                 ? null
                 : await repository.GetLivenessSubmissionAsync(journey.Appkey, cancellationToken);
-            var callback = await repository.GetLatestCallbackDeliveryAsync(journeyId, cancellationToken);
-            if (callback is not null
-                && currentSubmission is not null
-                && callback.DeliveredAt <= currentSubmission.SubmittedAt)
-            {
-                callback = null;
-            }
+            var callback = await repository.GetLatestCallbackOutboxAsync(journeyId, currentSubmission?.SubmittedAt, cancellationToken);
 
             if (callback is null)
             {
-                var pendingMessage = "A prova de vida foi enviada e esta em processo de validacao.";
-                if (!string.IsNullOrWhiteSpace(journey.Appkey))
-                {
-                    if (IsBlockedLivenessSubmission(currentSubmission))
-                    {
-                        pendingMessage = "Usuario bloqueado pelo provedor de liveness. Aguardando a confirmacao final da validacao.";
-                    }
-                }
-
                 return Results.Ok(new
                 {
                     status = "PENDING",
-                    message = pendingMessage
+                    message = IsBlockedLivenessSubmission(currentSubmission)
+                        ? "Usuário bloqueado pelo provedor de liveness. Aguardando a confirmação final da validação."
+                        : "A prova de vida foi enviada e está em processo de validação."
                 });
             }
 
-            var providerFailed = journey.Status == JourneyStatus.FAILED;
-            var success = !providerFailed && callback.ResponseStatus is >= 200 and <= 299;
-            return Results.Ok(new
+            if (journey.Status == JourneyStatus.FAILED)
             {
-                status = success ? "SUCCESS" : "FAILED",
-                callbackStatus = callback.ResponseStatus,
-                message = success
-                    ? ""
-                    : providerFailed
-                        ? "O provedor informou erro ao concluir a prova de vida."
-                        : "A prova de vida foi concluÃƒÂ­da, mas houve falha ao comunicar o sistema de assinatura.",
-                deliveredAt = callback.DeliveredAt
-            });
+                return Results.Ok(new
+                {
+                    status = "FAILED",
+                    callbackStatus = callback.LastResponseStatus,
+                    message = "O provedor informou erro ao concluir a prova de vida.",
+                    deliveredAt = callback.DeliveredAt
+                });
+            }
+
+            return callback.State switch
+            {
+                CallbackOutboxState.DELIVERED => Results.Ok(new
+                {
+                    status = "SUCCESS",
+                    callbackStatus = callback.LastResponseStatus,
+                    message = "",
+                    deliveredAt = callback.DeliveredAt
+                }),
+                CallbackOutboxState.FAILED => Results.Ok(new
+                {
+                    status = "FAILED",
+                    callbackStatus = callback.LastResponseStatus,
+                    message = "A prova de vida foi concluída, mas não foi possível comunicar o sistema de origem.",
+                    deliveredAt = (DateTimeOffset?)null
+                }),
+                _ when callback.Attempts >= Math.Max(1, options.Value.Webhook.DeferCompletionAfterAttempts) => Results.Ok(new
+                {
+                    status = "DEFERRED",
+                    callbackStatus = callback.LastResponseStatus,
+                    message = "Sua prova de vida foi concluída. O resultado será enviado automaticamente ao sistema de origem.",
+                    deliveredAt = (DateTimeOffset?)null
+                }),
+                _ => Results.Ok(new
+                {
+                    status = "PENDING",
+                    message = "A prova de vida foi concluída e o resultado está sendo enviado ao sistema de origem."
+                })
+            };
         });
 
         group.MapGet("/{journeyId:guid}/tenant-logo", async (
@@ -220,7 +262,7 @@ public static class JourneyEndpoints
             var journey = authorization.Journey!;
             if (string.IsNullOrWhiteSpace(journey.Appkey))
             {
-                return Results.BadRequest(new { message = "A jornada ainda nÃƒÂ£o possui appkey para consulta do resultado." });
+                return Results.BadRequest(new { message = "A jornada ainda não possui appkey para consulta do resultado." });
             }
 
             try
@@ -233,7 +275,7 @@ public static class JourneyEndpoints
                 return Results.Json(
                     new
                     {
-                        message = "NÃƒÂ£o foi possÃƒÂ­vel consultar o resultado da prova de vida na Certiface.",
+                        message = "Não foi possível consultar o resultado da prova de vida na Certiface.",
                         providerOperation = exception.Operation,
                         providerStatus = exception.StatusCode
                     },
@@ -258,13 +300,13 @@ public static class JourneyEndpoints
             var faceAsset = await repository.GetJourneyFaceAssetAsync(journeyId, "FRONTAL", cancellationToken);
             if (faceAsset is null)
             {
-                return Results.NotFound(new { message = "Imagem da face nÃƒÂ£o encontrada para esta jornada." });
+                return Results.NotFound(new { message = "Imagem da face não encontrada para esta jornada." });
             }
 
             var faceContent = await faceStorage.ReadAsync(faceAsset.StorageKey, faceAsset.ContentType, cancellationToken);
             if (faceContent is null)
             {
-                return Results.NotFound(new { message = "Arquivo da imagem da face nÃƒÂ£o encontrado no storage AWFace." });
+                return Results.NotFound(new { message = "Arquivo da imagem da face não encontrado no storage AWFace." });
             }
 
             var imageBase64 = Convert.ToBase64String(faceContent.Bytes);
@@ -298,13 +340,13 @@ public static class JourneyEndpoints
             var faceAsset = await repository.GetJourneyFaceAssetAsync(journeyId, "FRONTAL", cancellationToken);
             if (faceAsset is null)
             {
-                return Results.NotFound(new { message = "Imagem da face nÃƒÂ£o encontrada para esta jornada." });
+                return Results.NotFound(new { message = "Imagem da face não encontrada para esta jornada." });
             }
 
             var faceContent = await faceStorage.ReadAsync(faceAsset.StorageKey, faceAsset.ContentType, cancellationToken);
             if (faceContent is null)
             {
-                return Results.NotFound(new { message = "Arquivo da imagem da face nÃƒÂ£o encontrado no storage AWFace." });
+                return Results.NotFound(new { message = "Arquivo da imagem da face não encontrado no storage AWFace." });
             }
 
             var extension = faceAsset.ContentType == "image/png" ? "png" : "jpg";
@@ -373,13 +415,13 @@ public static class JourneyEndpoints
         var integrationToken = GetIntegrationToken(httpContext);
         if (string.IsNullOrWhiteSpace(integrationToken))
         {
-            return new HostJourneyAuthorization(null, Results.Unauthorized());
+            return new HostJourneyAuthorization(null, EndpointAccess.Unauthorized("Token de integração ausente ou inválido."));
         }
 
         var tenant = await repository.GetTenantByTokenAsync(integrationToken, cancellationToken);
         if (tenant is null || tenant.Status != TenantStatus.ACTIVE)
         {
-            return new HostJourneyAuthorization(null, Results.Unauthorized());
+            return new HostJourneyAuthorization(null, EndpointAccess.Unauthorized("Token de integração ausente ou inválido."));
         }
 
         var journey = await repository.GetJourneyByIdAsync(journeyId, cancellationToken);
@@ -390,7 +432,7 @@ public static class JourneyEndpoints
 
         if (journey.Tenant.Id != tenant.Id)
         {
-            return new HostJourneyAuthorization(null, Results.Forbid());
+            return new HostJourneyAuthorization(null, EndpointAccess.Forbidden("A jornada pertence a outro Tenant."));
         }
 
         return new HostJourneyAuthorization(journey, null);

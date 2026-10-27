@@ -53,6 +53,10 @@ export class FacetecV9Processor implements FaceTecFaceScanProcessor {
       `${environment.awfaceApiUrl || ''}/api/awface/facetec/v9/3d/liveness`
     );
     this.request.setRequestHeader('Content-Type', 'application/json');
+    const journeyToken = ((window as any).__awfaceRuntime || {}).journeyToken || window.sessionStorage.getItem('awface.journeyToken');
+    if (journeyToken) {
+      this.request.setRequestHeader('X-AWFace-Journey-Token', journeyToken);
+    }
 
     this.request.onreadystatechange = (): void => {
       if (this.request.readyState !== XMLHttpRequest.DONE) {

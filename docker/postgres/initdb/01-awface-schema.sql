@@ -167,9 +167,29 @@ CREATE TABLE awface_liveness_face_asset (
   UNIQUE (journey_id, asset_type)
 );
 
+CREATE TABLE awface_callback_outbox (
+  id uuid PRIMARY KEY,
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  event_key text NOT NULL UNIQUE,
+  payload jsonb NOT NULL,
+  status varchar(16) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENDING', 'DELIVERED', 'FAILED')),
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  locked_until timestamptz,
+  last_response_status integer,
+  last_error text,
+  delivered_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_awface_callback_outbox_due ON awface_callback_outbox (status, next_attempt_at);
+CREATE INDEX ix_awface_callback_outbox_journey ON awface_callback_outbox (journey_id, created_at DESC);
+
 CREATE TABLE awface_callback_delivery (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  outbox_id uuid REFERENCES awface_callback_outbox(id),
   target_url text NOT NULL,
   request_payload jsonb NOT NULL,
   response_status integer,
@@ -178,6 +198,21 @@ CREATE TABLE awface_callback_delivery (
   delivered_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE awface_sdk_request (
+  request_key text PRIMARY KEY,
+  journey_id uuid NOT NULL REFERENCES awface_liveness_journey(id),
+  appkey text NOT NULL,
+  operation varchar(40) NOT NULL,
+  status varchar(16) NOT NULL CHECK (status IN ('PROCESSING', 'COMPLETED')),
+  response_status integer,
+  response_content_type text,
+  response_body text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_awface_sdk_request_updated_at ON awface_sdk_request (updated_at);
 
 CREATE TABLE awface_schema_migration (
   id text PRIMARY KEY,

@@ -35,20 +35,18 @@ export class AdminTenantsComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    if (!this.awfaceService.isAdminAuthenticated()) {
-      this.router.navigateByUrl('/admin');
-      return;
-    }
-
     this.loadTenants();
   }
 
   loadTenants(): void {
-    this.awfaceService.listTenants().subscribe(tenants => {
-      this.tenants = tenants;
-      if (!this.selectedTenant.id && tenants.length) {
-        this.selectedTenant = this.cloneTenant(tenants[0]);
-      }
+    this.awfaceService.listTenants().subscribe({
+      next: tenants => {
+        this.tenants = tenants;
+        if (!this.selectedTenant.id && tenants.length) {
+          this.selectedTenant = this.cloneTenant(tenants[0]);
+        }
+      },
+      error: error => this.message = this.describeError(error, 'Não foi possível carregar os tenants.'),
     });
   }
 
@@ -65,10 +63,13 @@ export class AdminTenantsComponent implements OnInit {
   }
 
   saveTenant(): void {
-    this.awfaceService.saveTenant(this.selectedTenant).subscribe(tenant => {
-      this.message = `Tenant "${tenant.name}" salvo.`;
-      this.selectedTenant = this.cloneTenant(tenant);
-      this.loadTenants();
+    this.awfaceService.saveTenant(this.selectedTenant).subscribe({
+      next: tenant => {
+        this.message = `Tenant "${tenant.name}" salvo.`;
+        this.selectedTenant = this.cloneTenant(tenant);
+        this.loadTenants();
+      },
+      error: error => this.message = this.describeError(error, 'Não foi possível salvar o tenant.'),
     });
   }
 
@@ -77,10 +78,13 @@ export class AdminTenantsComponent implements OnInit {
       return;
     }
 
-    this.awfaceService.updateTenantStatus(this.selectedTenant.id, status).subscribe(tenant => {
-      this.message = `Status atualizado para ${this.statusLabel(tenant.status)}.`;
-      this.selectedTenant = this.cloneTenant(tenant);
-      this.loadTenants();
+    this.awfaceService.updateTenantStatus(this.selectedTenant.id, status).subscribe({
+      next: tenant => {
+        this.message = `Status atualizado para ${this.statusLabel(tenant.status)}.`;
+        this.selectedTenant = this.cloneTenant(tenant);
+        this.loadTenants();
+      },
+      error: error => this.message = this.describeError(error, 'Não foi possível atualizar o status.'),
     });
   }
 
@@ -145,6 +149,11 @@ export class AdminTenantsComponent implements OnInit {
     return this.awfaceService.getLogoSource(this.selectedTenant.logoBase64);
   }
 
+  regenerateSecureCallbackToken(): void {
+    this.selectedTenant.secureCallbackToken = this.createSecret();
+    this.message = 'Segredo do webhook regenerado. Salve o tenant e atualize a aplicação Host.';
+  }
+
   regenerateIntegrationToken(): void {
     this.selectedTenant.integrationToken = this.createIntegrationToken();
     this.message = 'Token de integração regenerado. Salve o tenant para persistir a alteração.';
@@ -206,7 +215,7 @@ export class AdminTenantsComponent implements OnInit {
       primaryColor: '#007060',
       secondaryColor: '#315f88',
       callbackUrl: '',
-      secureCallbackToken: '',
+      secureCallbackToken: this.createSecret(),
       callbackOAuthEnabled: false,
       callbackOAuthTokenUrl: '',
       callbackOAuthClientId: '',
@@ -219,6 +228,19 @@ export class AdminTenantsComponent implements OnInit {
 
   private createIntegrationToken(): string {
     return `awf_${crypto.randomUUID().replace(/-/g, '')}`;
+  }
+
+  private createSecret(): string {
+    return `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
+  }
+
+  private describeError(error: any, fallback: string): string {
+    const body = error?.error;
+    if (Array.isArray(body) && body.length) {
+      return body.map((item: { message?: string }) => item.message).filter(Boolean).join(' ');
+    }
+
+    return body?.detail || body?.message || fallback;
   }
 
   private copyIntegrationTokenFallback(token: string): void {
@@ -240,7 +262,8 @@ export class AdminTenantsComponent implements OnInit {
   private cloneTenant(tenant: AwfaceTenant): AwfaceTenant {
     return {
       ...tenant,
-      credentials: tenant.credentials.map(credential => ({ ...credential })),
+      callbackOAuthClientSecret: '',
+      credentials: tenant.credentials.map(credential => ({ ...credential, providerPass: '' })),
     };
   }
 }

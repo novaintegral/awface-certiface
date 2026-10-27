@@ -166,6 +166,16 @@
 
             <label class="form-label" for="callbackUrl">UrlCallback</label>
             <input id="callbackUrl" class="form-control" name="callbackUrl" [(ngModel)]="selectedTenant.callbackUrl" type="url" />
+
+            <label class="form-label mt-3" for="secureCallbackToken">Segredo do webhook</label>
+            <div class="input-group">
+              <input id="secureCallbackToken" class="form-control" name="secureCallbackToken" [(ngModel)]="selectedTenant.secureCallbackToken" autocomplete="off" minlength="16" />
+              <button class="btn btn-outline-secondary" type="button" (click)="regenerateSecureCallbackToken()">Gerar</button>
+            </div>
+            <small class="form-text">
+              Enviado no header X-AWFace-SecureCallback e usado para assinar o corpo (HMAC-SHA256) no header X-AWFace-Signature.
+              Mínimo de 16 caracteres.
+            </small>
           </section>
 
           <section class="form-section" *ngIf="activeTab === 'oauth'">
@@ -198,7 +208,8 @@
 
               <div class="col-12 col-xl-6">
                 <label class="form-label" for="callbackOAuthClientSecret">Client Secret</label>
-                <input id="callbackOAuthClientSecret" class="form-control" name="callbackOAuthClientSecret" [(ngModel)]="selectedTenant.callbackOAuthClientSecret" type="password" autocomplete="off" />
+                <input id="callbackOAuthClientSecret" class="form-control" name="callbackOAuthClientSecret" [(ngModel)]="selectedTenant.callbackOAuthClientSecret" type="password" autocomplete="new-password"
+                  [placeholder]="selectedTenant.hasCallbackOAuthClientSecret ? 'Mantido — preencha apenas para alterar' : ''" />
               </div>
             </div>
           </section>
@@ -241,7 +252,9 @@
                     [id]="'providerPass' + journey.value"
                     [name]="'providerPass' + journey.value"
                     [(ngModel)]="getCredential(journey.value).providerPass"
-                    autocomplete="off"
+                    type="password"
+                    autocomplete="new-password"
+                    [placeholder]="getCredential(journey.value).hasProviderPass ? 'Mantida — preencha apenas para alterar' : ''"
                   />
                 </div>
               </div>
