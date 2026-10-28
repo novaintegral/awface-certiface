@@ -44,6 +44,12 @@ public sealed class WebhookOptions
     /// e informa ao usuário que o resultado será entregue automaticamente.
     /// </summary>
     public int DeferCompletionAfterAttempts { get; set; } = 3;
+
+    /// <summary>
+    /// Somente para ambiente local com a API em container: host usado no lugar de localhost/127.0.0.1
+    /// nas chamadas ao Tenant (ex.: host.docker.internal). Vazio desativa.
+    /// </summary>
+    public string LocalhostAlias { get; set; } = "";
 }
 
 public sealed class FaceStorageOptions

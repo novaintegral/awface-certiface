@@ -43,6 +43,7 @@ services:
       Awface__Security__JourneyTokenLifetimeMinutes: "${AWFACE_JOURNEY_TOKEN_LIFETIME_MINUTES:-120}"
       Awface__Webhook__MaxAttempts: "${AWFACE_WEBHOOK_MAX_ATTEMPTS:-10}"
       Awface__Webhook__TimeoutSeconds: "${AWFACE_WEBHOOK_TIMEOUT_SECONDS:-10}"
+      Awface__Webhook__LocalhostAlias: "${AWFACE_WEBHOOK_LOCALHOST_ALIAS:-}"
       Awface__FaceStorage__RootPath: "${AWFACE_FACE_STORAGE_ROOT_PATH:-/app/storage/faces}"
       Awface__FaceStorage__EncryptionKey: "${AWFACE_FACE_STORAGE_ENCRYPTION_KEY:?Defina AWFACE_FACE_STORAGE_ENCRYPTION_KEY no .env}"
       Awface__FaceStorage__PreviousEncryptionKeys__0: "${AWFACE_FACE_STORAGE_PREVIOUS_ENCRYPTION_KEY:-}"

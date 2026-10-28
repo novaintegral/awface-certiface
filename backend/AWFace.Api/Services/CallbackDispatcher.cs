@@ -194,25 +194,39 @@ public sealed class CallbackDispatcher : BackgroundService
         else if (nextAttemptAt is not null)
         {
             _logger.LogWarning(
-                "Webhook do Tenant não entregue. JourneyId={JourneyId}, EventId={EventId}, tentativa={Attempt}/{MaxAttempts}, status={Status}. Nova tentativa em {NextAttemptAt:O}.",
+                "Webhook do Tenant não entregue. JourneyId={JourneyId}, EventId={EventId}, tentativa={Attempt}/{MaxAttempts}, status={Status}, motivo={Reason}. Nova tentativa em {NextAttemptAt:O}.",
                 item.JourneyId,
                 item.EventId,
                 item.Attempts,
                 maxAttempts,
                 result.StatusCode,
+                Summarize(result.ResponseBody),
                 nextAttemptAt
             );
         }
         else
         {
             _logger.LogError(
-                "Webhook do Tenant descartado após {Attempts} tentativas. JourneyId={JourneyId}, EventId={EventId}, último status={Status}.",
+                "Webhook do Tenant descartado após {Attempts} tentativas. JourneyId={JourneyId}, EventId={EventId}, último status={Status}, motivo={Reason}.",
                 item.Attempts,
                 item.JourneyId,
                 item.EventId,
-                result.StatusCode
+                result.StatusCode,
+                Summarize(result.ResponseBody)
             );
         }
+    }
+
+    /// <summary>Resumo curto do motivo (erro de rede ou corpo da resposta do Tenant) para o log.</summary>
+    private static string Summarize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "-";
+        }
+
+        var singleLine = value.ReplaceLineEndings(" ").Trim();
+        return singleLine.Length > 300 ? singleLine[..300] + "…" : singleLine;
     }
 
     private async Task HousekeepingAsync(CancellationToken cancellationToken)

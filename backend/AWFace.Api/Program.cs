@@ -70,7 +70,8 @@ builder.Services.AddSingleton<FaceAssetStorage>();
 builder.Services.AddSingleton<TenantWebhookClient>();
 builder.Services.AddHostedService<CallbackDispatcher>();
 builder.Services.AddHttpClient<CertifaceClient>();
-builder.Services.AddHttpClient("TenantCallback");
+builder.Services.AddHttpClient("TenantCallback")
+    .ConfigurePrimaryHttpMessageHandler(() => TenantCallbackHttpHandler.Create(awfaceOptions.Webhook));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<ILoggerProvider, FileLoggerProvider>();
 
@@ -82,6 +83,14 @@ StartupSecurityValidator.Validate(
     app.Environment,
     app.Logger
 );
+
+if (!string.IsNullOrWhiteSpace(awfaceOptions.Webhook.LocalhostAlias))
+{
+    app.Logger.LogWarning(
+        "Awface:Webhook:LocalhostAlias ativo: chamadas ao Tenant em localhost serão enviadas para {Alias}, aceitando certificado de desenvolvimento. Use apenas em ambiente local.",
+        awfaceOptions.Webhook.LocalhostAlias
+    );
+}
 
 await using (var scope = app.Services.CreateAsyncScope())
 {

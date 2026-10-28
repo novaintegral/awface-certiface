@@ -71,12 +71,19 @@ public sealed class TenantWebhookClient
         }
         catch (HttpRequestException exception)
         {
-            return new TenantWebhookResult(false, null, $"Falha de rede ao comunicar o webhook do Tenant: {exception.Message}");
+            var cause = exception.GetBaseException().Message;
+            var detail = cause == exception.Message ? exception.Message : $"{exception.Message} ({cause})";
+            return new TenantWebhookResult(false, null, $"Falha de rede ao comunicar {DescribeTarget(tenant.CallbackUrl)}: {detail}");
         }
         catch (InvalidOperationException exception)
         {
             return new TenantWebhookResult(false, null, exception.Message);
         }
+    }
+
+    private static string DescribeTarget(string url)
+    {
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? $"{uri.Scheme}://{uri.Authority}" : "o webhook do Tenant";
     }
 
     public static string ComputeSignature(string secret, string timestamp, byte[] body)

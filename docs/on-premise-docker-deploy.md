@@ -108,6 +108,29 @@ que a utiliza.
 
 Requer Docker Desktop em execução.
 
+### Testando com um Host local (ex.: Portal em `https://localhost:44305`)
+
+Dentro do container, `localhost` é o próprio container: um `UrlCallback` ou
+Token URL apontando para `localhost` não alcança aplicações rodando no Windows,
+e o webhook falha com erro de conexão (`status=(null)` no log).
+
+Para testes locais, defina no `.env`:
+
+```env
+AWFACE_WEBHOOK_LOCALHOST_ALIAS=host.docker.internal
+```
+
+Com isso, chamadas ao Tenant em `localhost`/`127.0.0.1` são enviadas para a
+máquina (`host.docker.internal`), mantendo a URL original (Host e SNI
+`localhost`) e aceitando o certificado de desenvolvimento do ASP.NET apenas
+para esses destinos. Não use em servidores.
+
+Após corrigir a configuração, reenvie imediatamente os webhooks pendentes:
+
+```powershell
+.\scripts\awface.ps1 retry-webhooks
+```
+
 ## Subir ambiente
 
 ```bash

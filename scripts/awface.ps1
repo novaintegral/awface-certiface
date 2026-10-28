@@ -20,11 +20,12 @@
     .\scripts\awface.ps1 status
     .\scripts\awface.ps1 logs awface-api
     .\scripts\awface.ps1 check
+    .\scripts\awface.ps1 retry-webhooks
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('start', 'stop', 'restart', 'status', 'logs', 'check', 'help')]
+    [ValidateSet('start', 'stop', 'restart', 'status', 'logs', 'check', 'retry-webhooks', 'help')]
     [string]$Command = 'help',
 
     [Parameter(Position = 1)]
@@ -560,6 +561,28 @@ function Test-Configuration {
     Write-Ok 'Configuração válida.'
 }
 
+function Invoke-RetryWebhooks {
+    Resolve-Compose
+    if (-not (Test-ContainerRunning 'awface-db')) {
+        Stop-WithError 'O container awface-db não está em execução. Rode .\scripts\awface.ps1 start primeiro.'
+    }
+
+    $map = Get-EnvMap (Read-EnvLines $EnvFile)
+    $user = 'postgres'
+    $database = 'awface'
+    if ($map.Contains('POSTGRES_USER') -and $map['POSTGRES_USER']) { $user = $map['POSTGRES_USER'] }
+    if ($map.Contains('POSTGRES_DB') -and $map['POSTGRES_DB']) { $database = $map['POSTGRES_DB'] }
+
+    Write-Step 'Reagendando webhooks não entregues para envio imediato'
+    $sql = "update awface_callback_outbox set status = 'PENDING', next_attempt_at = now(), " +
+        "attempts = least(attempts, 9), locked_until = null, updated_at = now() " +
+        "where status in ('PENDING', 'FAILED') and delivered_at is null;"
+    & docker exec awface-db psql -U $user -d $database -v ON_ERROR_STOP=1 -c $sql | Out-Host
+    if ($LASTEXITCODE -ne 0) { Stop-WithError 'Não foi possível reagendar os webhooks.' }
+
+    Write-Ok 'Webhooks reagendados. Acompanhe com: .\scripts\awface.ps1 logs awface-api'
+}
+
 function Show-Help {
     Write-Host @'
 Uso: .\scripts\awface.ps1 <comando> [serviço] [-NoBuild] [-TimeoutSeconds 180]
@@ -572,6 +595,8 @@ Comandos:
   status    Mostra os containers e o health da API.
   logs      Acompanha os logs (opcional: awface-api, awface-front ou awface-db).
   check     Prepara o .env e valida a configuração sem subir nada.
+  retry-webhooks
+            Reenvia agora os webhooks ainda não entregues ao Tenant.
 
 Pelo Prompt de Comando ou duplo clique, use awface.cmd na raiz do projeto.
 '@
@@ -584,5 +609,6 @@ switch ($Command) {
     'status'  { Show-Status }
     'logs'    { Show-Logs }
     'check'   { Test-Configuration }
+    'retry-webhooks' { Invoke-RetryWebhooks }
     default   { Show-Help }
 }

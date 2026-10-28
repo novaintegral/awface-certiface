@@ -19,6 +19,10 @@ Release de segurança e confiabilidade (fases 0 e 1 do estudo de código de 27/1
 
 - Script `scripts/awface.ps1` (e atalho `awface.cmd`) para iniciar, encerrar,
   reiniciar e acompanhar o ambiente Docker, preparando o `.env` com chaves fortes.
+- `AWFACE_WEBHOOK_LOCALHOST_ALIAS` para testes locais com a API em Docker e o
+  Host (ex.: Portal) rodando em `localhost` na máquina; comando
+  `retry-webhooks` no script para reenviar webhooks pendentes.
+- Log de falha do webhook passa a registrar o motivo (ex.: erro de conexão/TLS).
 
 ### Segurança
 
