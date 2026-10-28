@@ -11,6 +11,19 @@ e o projeto utiliza [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 - Espaço reservado para mudanças da próxima release.
 
+## [1.1.2] - 2026-10-28
+
+### Corrigido
+
+- Tela em branco em navegadores que já tinham acessado o domínio quando ele
+  hospedava outra aplicação Angular com service worker (`ngsw-worker.js`): a
+  imagem do frontend passa a publicar um service worker de autodesativação
+  (`ngsw-worker.js`, `safety-worker.js`, `worker-basic.min.js`) que limpa os
+  caches, se desregistra e recarrega a página.
+- Nginx: arquivos estáticos inexistentes retornam 404 em vez do `index.html`;
+  `ngsw.json` retorna 404; `index.html` e os service workers não são cacheados;
+  cabeçalhos de segurança mantidos nessas rotas (snippet `awface-security-headers.conf`).
+
 ## [1.1.1] - 2026-10-28
 
 ### Corrigido
@@ -112,7 +125,8 @@ Release de segurança e confiabilidade (fases 0 e 1 do estudo de código de 27/1
 - Deploy on-premise com frontend, API e PostgreSQL em Docker Compose.
 - Controle de release SemVer unificado entre frontend, backend e Docker.
 
-[Não publicado]: https://github.com/novaintegral/awface-certiface/compare/v1.1.1...HEAD
+[Não publicado]: https://github.com/novaintegral/awface-certiface/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/novaintegral/awface-certiface/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/novaintegral/awface-certiface/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/novaintegral/awface-certiface/compare/v1.0.3...v1.1.0
 [1.0.0]: https://github.com/novaintegral/awface-certiface/releases/tag/v1.0.0
