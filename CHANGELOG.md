@@ -15,6 +15,11 @@ e o projeto utiliza [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 Release de segurança e confiabilidade (fases 0 e 1 do estudo de código de 27/10/2026).
 
+### Adicionado
+
+- Script `scripts/awface.ps1` (e atalho `awface.cmd`) para iniciar, encerrar,
+  reiniciar e acompanhar o ambiente Docker, preparando o `.env` com chaves fortes.
+
 ### Segurança
 
 - Rotas `/api/awface/admin/*` exigem token assinado (HMAC-SHA256) emitido no login;

@@ -74,6 +74,32 @@ Em produção, `AWFACE_FRONTEND_BASE_URL` deve ser a URL que os usuários acessa
 AWFACE_FRONTEND_BASE_URL=https://awface.suaempresa.com.br
 ```
 
+## Script de inicialização (Windows)
+
+Para testar na própria máquina, use o script, que prepara o `.env`, sobe os
+containers e aguarda a API ficar saudável:
+
+```powershell
+.\scripts\awface.ps1 start      # prepara o .env, constrói e sobe tudo
+.\scripts\awface.ps1 stop       # encerra (dados em docker-data são preservados)
+.\scripts\awface.ps1 restart
+.\scripts\awface.ps1 status
+.\scripts\awface.ps1 logs awface-api
+.\scripts\awface.ps1 check      # prepara o .env e valida o compose sem subir
+```
+
+No Prompt de Comando: `awface start` / `awface stop` (arquivo `awface.cmd` na raiz).
+
+Ao preparar o `.env`, o script:
+
+- cria o `.env` a partir do `.env.example`, se não existir, e acrescenta variáveis novas sem alterar as existentes;
+- gera `AWFACE_DATA_ENCRYPTION_KEY`, `AWFACE_FACE_STORAGE_ENCRYPTION_KEY` e `POSTGRES_PASSWORD` (esta só quando o banco ainda não existe) quando vazias;
+- preserva a chave padrão da 1.0.x em `AWFACE_FACE_STORAGE_PREVIOUS_ENCRYPTION_KEY` quando já há imagens gravadas;
+- gera uma senha forte para o administrador inicial quando a atual é fraca e a exibe uma única vez;
+- sincroniza `AWFACE_VERSION` com o arquivo `VERSION` e grava uma cópia `.env.bak-<data>` antes de alterar.
+
+Requer Docker Desktop em execução.
+
 ## Subir ambiente
 
 ```bash
