@@ -389,15 +389,119 @@ function Show-Urls {
     $apiPort = (Get-EnvMap (Read-EnvLines $EnvFile))['AWFACE_API_PORT']
     if (-not $apiPort) { $apiPort = '5500' }
     Write-Host "  API direta:         http://127.0.0.1:$apiPort/health"
+    $dbPort = (Get-EnvMap (Read-EnvLines $EnvFile))['POSTGRES_PORT']
+    if (-not $dbPort) { $dbPort = '5432' }
+    Write-Host "  PostgreSQL:         127.0.0.1:$dbPort"
     Write-Host ''
     Write-Host 'Para encerrar: .\scripts\awface.ps1 stop'
 }
 
 # ----------------------------------------------------------------------------- Comandos
 
+# ----------------------------------------------------------------------------- Portas
+
+function Test-PortAvailable([string]$Address, [int]$Port) {
+    $ip = [System.Net.IPAddress]::Any
+    if ($Address -and $Address -ne '0.0.0.0') { $ip = [System.Net.IPAddress]::Parse($Address) }
+    $listener = New-Object System.Net.Sockets.TcpListener($ip, $Port)
+    try {
+        $listener.ExclusiveAddressUse = $true
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
+    } finally {
+        try { $listener.Stop() } catch { }
+    }
+}
+
+function Get-PortOwner([int]$Port) {
+    if (-not (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) { return $null }
+    try {
+        $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop | Select-Object -First 1
+        $process = Get-Process -Id $connection.OwningProcess -ErrorAction Stop
+        return "$($process.ProcessName) (PID $($process.Id))"
+    } catch {
+        return $null
+    }
+}
+
+function Test-ContainerRunning([string]$Name) {
+    $running = (& docker inspect -f '{{.State.Running}}' $Name 2>$null)
+    return ($LASTEXITCODE -eq 0 -and ([string]$running).Trim() -eq 'true')
+}
+
+function Find-FreePort([string]$Address, [int]$From, [int]$To) {
+    for ($port = $From; $port -le $To; $port++) {
+        if (Test-PortAvailable $Address $port) { return $port }
+    }
+    return $null
+}
+
+function Get-PortBlockReason([int]$Port) {
+    $owner = Get-PortOwner $Port
+    if ($owner) { return "em uso por $owner" }
+    return 'reservada pelo Windows (Hyper-V/WinNAT) ou em uso por outro serviço'
+}
+
+# Verifica as portas publicadas no host antes do docker compose up.
+# Banco e API são acessados pelos outros containers pela rede interna, então trocar a porta
+# publicada no host não afeta a aplicação: nesses casos o script escolhe uma porta livre.
+function Resolve-HostPorts {
+    Write-Step 'Verificando portas do host'
+
+    $map = Get-EnvMap (Read-EnvLines $EnvFile)
+    $updates = [ordered]@{}
+
+    $ports = @(
+        @{ Name = 'Banco (PostgreSQL)'; Container = 'awface-db';    PortKey = 'POSTGRES_PORT';     Default = 5432; BindKey = 'POSTGRES_BIND';   DefaultBind = '127.0.0.1'; Range = @(5433, 5499); Auto = $true },
+        @{ Name = 'API';                Container = 'awface-api';   PortKey = 'AWFACE_API_PORT';   Default = 5500; BindKey = 'AWFACE_API_BIND'; DefaultBind = '127.0.0.1'; Range = @(5501, 5579); Auto = $true },
+        @{ Name = 'Frontend';           Container = 'awface-front'; PortKey = 'AWFACE_FRONT_PORT'; Default = 5580; BindKey = $null;             DefaultBind = '0.0.0.0';   Range = $null;          Auto = $false }
+    )
+
+    foreach ($item in $ports) {
+        $port = $item.Default
+        if ($map.Contains($item.PortKey) -and $map[$item.PortKey]) { $port = [int]$map[$item.PortKey] }
+        $bind = $item.DefaultBind
+        if ($item.BindKey -and $map.Contains($item.BindKey) -and $map[$item.BindKey]) { $bind = $map[$item.BindKey] }
+
+        if (Test-ContainerRunning $item.Container) {
+            Write-Ok "$($item.Name): porta $port (container já em execução)."
+            continue
+        }
+
+        if (Test-PortAvailable $bind $port) {
+            Write-Ok "$($item.Name): porta $port livre."
+            continue
+        }
+
+        $reason = Get-PortBlockReason $port
+        if (-not $item.Auto) {
+            Stop-WithError ("A porta $port do $($item.Name) está $reason. Libere a porta ou altere " +
+                "AWFACE_FRONT_PORT e AWFACE_FRONTEND_BASE_URL no .env (ex.: 5581 e http://localhost:5581).")
+        }
+
+        $newPort = Find-FreePort $bind $item.Range[0] $item.Range[1]
+        if (-not $newPort) {
+            Stop-WithError "A porta $port do $($item.Name) está $reason e não há porta livre entre $($item.Range[0]) e $($item.Range[1])."
+        }
+
+        Write-Warn "$($item.Name): porta $port $reason. Usando a porta $newPort no host (gravada em $($item.PortKey) no .env)."
+        $updates[$item.PortKey] = [string]$newPort
+    }
+
+    if ($updates.Count -gt 0) {
+        $lines = New-Object 'System.Collections.Generic.List[string]'
+        foreach ($line in (Read-EnvLines $EnvFile)) { $lines.Add($line) }
+        foreach ($key in $updates.Keys) { Set-EnvLine $lines $key $updates[$key] }
+        [System.IO.File]::WriteAllLines($EnvFile, $lines.ToArray(), $Utf8NoBom)
+    }
+}
+
 function Start-AWFace {
     Resolve-Compose
     Initialize-EnvFile
+    Resolve-HostPorts
     Set-BuildMetadata
 
     $arguments = @('up', '-d')
@@ -447,6 +551,7 @@ function Show-Logs {
 function Test-Configuration {
     Resolve-Compose
     Initialize-EnvFile
+    Resolve-HostPorts
     Set-BuildMetadata
     Write-Step 'Validando o docker-compose.yml com o .env'
     if ((Invoke-Compose @('config', '--quiet')) -ne 0) {

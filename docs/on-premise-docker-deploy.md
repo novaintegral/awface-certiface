@@ -98,6 +98,14 @@ Ao preparar o `.env`, o script:
 - gera uma senha forte para o administrador inicial quando a atual é fraca e a exibe uma única vez;
 - sincroniza `AWFACE_VERSION` com o arquivo `VERSION` e grava uma cópia `.env.bak-<data>` antes de alterar.
 
+Antes de subir, o script também verifica as portas do host. Se a porta do
+banco (5432) ou da API (5500) estiver ocupada — por exemplo, por um PostgreSQL
+instalado no Windows ou por uma faixa reservada pelo Hyper-V — ele escolhe a
+próxima porta livre e grava em `POSTGRES_PORT`/`AWFACE_API_PORT`. Os containers
+continuam se comunicando pelas portas internas, então a aplicação não é afetada.
+Se a porta do frontend (5580) estiver ocupada, o script para e indica o processo
+que a utiliza.
+
 Requer Docker Desktop em execução.
 
 ## Subir ambiente
