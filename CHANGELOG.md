@@ -23,6 +23,13 @@ Release de segurança e confiabilidade (fases 0 e 1 do estudo de código de 27/1
   Host (ex.: Portal) rodando em `localhost` na máquina; comando
   `retry-webhooks` no script para reenviar webhooks pendentes.
 - Log de falha do webhook passa a registrar o motivo (ex.: erro de conexão/TLS).
+- Script `scripts/publish.ps1` (e atalho `publish.cmd`) para build e push das
+  imagens `awface-front` e `awface-api` no Docker Hub, com proteção contra
+  publicação de código não commitado e sobrescrita de versões publicadas.
+
+### Segurança (build)
+
+- `.dockerignore` passa a excluir `.env`, `deploy/env` e o storage local de faces.
 
 ### Segurança
 

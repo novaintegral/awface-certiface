@@ -68,6 +68,31 @@ git push origin v1.0.0
 Não reutilize nem mova uma tag publicada. Uma correção deve gerar uma nova
 versão `PATCH`.
 
+## Publicar as imagens no Docker Hub
+
+Com a conta conectada no Docker Desktop e a release já commitada:
+
+```powershell
+.\scripts\publish.ps1 -DryRun     # confere o plano sem construir nem publicar
+.\scripts\publish.ps1             # build + push de awface-front e awface-api com a tag de VERSION
+.\scripts\publish.ps1 -Latest     # também atualiza a tag latest
+.\scripts\publish.ps1 -Only api   # somente uma das imagens
+```
+
+No Prompt de Comando: `publish`, `publish -Latest` etc. (arquivo `publish.cmd` na raiz).
+
+O script:
+
+- recusa publicar com alterações não commitadas (`-AllowDirty` gera uma imagem de teste marcada `-dirty`);
+- valida a consistência de versões (`scripts/verify-version.mjs`);
+- recusa sobrescrever uma tag já existente no Docker Hub (`-Force` para forçar);
+- constrói as duas imagens para `linux/amd64` antes de qualquer push, com os labels OCI de versão, commit e data;
+- exibe os digests publicados e os comandos de atualização do servidor.
+
+Parâmetros adicionais: `-Namespace` (padrão `novaintegral`), `-Tag`, `-Platform`, `-NoCache`, `-SkipBuild`.
+
+O `.dockerignore` exclui `.env`, `deploy/env`, `docker-data` e o storage local de faces: segredos e dados biométricos nunca entram no contexto de build.
+
 ## Metadados Docker
 
 Antes de construir uma release on-premise, configure:
