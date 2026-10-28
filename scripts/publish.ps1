@@ -13,7 +13,8 @@
       - recusa publicar com alterações não commitadas (use -AllowDirty para testes);
       - valida a consistência de versões (VERSION, package.json, release-version.ts);
       - recusa sobrescrever uma versão que já existe no Docker Hub (use -Force);
-      - a tag 'latest' só é atualizada com -Latest.
+      - a tag 'latest' só é atualizada com -Latest;
+      - imagens multiplataforma (linux/amd64 e linux/arm64) via docker buildx.
 
 .EXAMPLE
     .\scripts\publish.ps1                    # build + push da versão do arquivo VERSION
@@ -35,8 +36,8 @@ param(
     [ValidateSet('all', 'front', 'api')]
     [string]$Only = 'all',
 
-    # Plataforma das imagens (servidores on-premise Linux x64).
-    [string]$Platform = 'linux/amd64',
+    # Plataformas das imagens. Padrão: Linux x64 (Intel/AMD) e ARM64 (ex.: AWS Graviton).
+    [string]$Platform = 'linux/amd64,linux/arm64',
 
     # Também publica a tag 'latest'.
     [switch]$Latest,
@@ -46,9 +47,6 @@ param(
 
     # Permite publicar com alterações não commitadas (as imagens ficam marcadas com '-dirty').
     [switch]$AllowDirty,
-
-    # Reaproveita imagens já construídas localmente com a mesma tag (somente push).
-    [switch]$SkipBuild,
 
     # Constrói sem usar o cache do Docker.
     [switch]$NoCache,
@@ -179,52 +177,59 @@ foreach ($image in $images) {
     }
 }
 
-if (-not $SkipBuild) {
-    foreach ($image in $images) {
-        Write-Step "Construindo $($image.Name):$Tag"
-        $arguments = @(
-            'build',
-            '--file', $image.Dockerfile,
-            '--platform', $Platform,
-            '--build-arg', "AWFACE_VERSION=$version",
-            '--build-arg', "AWFACE_BUILD_COMMIT=$commit",
-            '--build-arg', "AWFACE_BUILD_DATE=$buildDate",
-            '--label', "org.opencontainers.image.version=$Tag",
-            '--label', "org.opencontainers.image.revision=$commit",
-            '--label', "org.opencontainers.image.created=$buildDate",
-            '--tag', "$($image.Name):$Tag"
-        )
-        if ($Latest) { $arguments += @('--tag', "$($image.Name):latest") }
-        if ($NoCache) { $arguments += '--no-cache' }
-        $arguments += '.'
+# ----------------------------------------------------------------------------- Build e push (buildx, multiplataforma)
 
-        if ((Invoke-Native 'docker' $arguments) -ne 0) {
-            Stop-WithError "Falha no build de $($image.Name). Nada foi publicado."
-        }
+# O builder 'docker-container' permite gerar imagens para várias arquiteturas (amd64 e arm64)
+# e publicá-las sob a mesma tag; o servidor baixa automaticamente a arquitetura correta.
+$builder = 'awface-builder'
+Write-Step "Preparando o builder multiplataforma '$builder'"
+& docker buildx version *> $null
+if ($LASTEXITCODE -ne 0) { Stop-WithError 'docker buildx não encontrado. Atualize o Docker Desktop.' }
+& docker buildx inspect $builder *> $null
+if ($LASTEXITCODE -ne 0) {
+    if ((Invoke-Native 'docker' @('buildx', 'create', '--name', $builder, '--driver', 'docker-container')) -ne 0) {
+        Stop-WithError 'Não foi possível criar o builder buildx.'
     }
 } else {
-    Write-Step 'Pulando o build (-SkipBuild)'
-    foreach ($image in $images) {
-        & docker image inspect "$($image.Name):$Tag" *> $null
-        if ($LASTEXITCODE -ne 0 -and -not $DryRun) {
-            Stop-WithError "Imagem local $($image.Name):$Tag não encontrada. Rode sem -SkipBuild."
-        }
-        if ($Latest -and -not $DryRun) {
-            & docker tag "$($image.Name):$Tag" "$($image.Name):latest"
-        }
+    Write-Ok 'Builder já existe.'
+}
+
+function Get-BuildArguments($image) {
+    return @(
+        'buildx', 'build',
+        '--builder', $builder,
+        '--file', $image.Dockerfile,
+        '--platform', $Platform,
+        '--build-arg', "AWFACE_VERSION=$version",
+        '--build-arg', "AWFACE_BUILD_COMMIT=$commit",
+        '--build-arg', "AWFACE_BUILD_DATE=$buildDate",
+        '--label', "org.opencontainers.image.version=$Tag",
+        '--label', "org.opencontainers.image.revision=$commit",
+        '--label', "org.opencontainers.image.created=$buildDate"
+    )
+}
+
+# 1ª passagem: constrói todas as imagens e plataformas sem publicar. Se qualquer build falhar,
+# nada é enviado ao Docker Hub (evita publicar um par front/api incompleto).
+foreach ($image in $images) {
+    Write-Step "Construindo $($image.Name):$Tag ($Platform)"
+    $arguments = (Get-BuildArguments $image) + @('--output', 'type=cacheonly')
+    if ($NoCache) { $arguments += '--no-cache' }
+    $arguments += '.'
+    if ((Invoke-Native 'docker' $arguments) -ne 0) {
+        Stop-WithError "Falha no build de $($image.Name). Nada foi publicado."
     }
 }
 
-# Push somente depois de todos os builds terem dado certo, para não publicar um par incompleto.
+# 2ª passagem: reaproveita o cache da 1ª e publica o manifesto multiplataforma.
 foreach ($image in $images) {
-    $tags = @($Tag)
-    if ($Latest) { $tags += 'latest' }
-    foreach ($currentTag in $tags) {
-        Write-Step "Publicando $($image.Name):$currentTag"
-        if ((Invoke-Native 'docker' @('push', "$($image.Name):$currentTag")) -ne 0) {
-            Stop-WithError ("Falha no push de $($image.Name):$currentTag. Verifique o login no Docker Desktop " +
-                "e se a conta tem permissão de escrita em '$Namespace'.")
-        }
+    Write-Step "Publicando $($image.Name):$Tag"
+    $arguments = (Get-BuildArguments $image) + @('--tag', "$($image.Name):$Tag")
+    if ($Latest) { $arguments += @('--tag', "$($image.Name):latest") }
+    $arguments += @('--push', '.')
+    if ((Invoke-Native 'docker' $arguments) -ne 0) {
+        Stop-WithError ("Falha no push de $($image.Name):$Tag. Verifique o login no Docker Desktop " +
+            "e se a conta tem permissão de escrita em '$Namespace'.")
     }
 }
 
@@ -238,10 +243,10 @@ if ($DryRun) {
 
 Write-Host 'Publicação concluída:' -ForegroundColor Green
 foreach ($image in $images) {
-    $digest = (& docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$($image.Name):$Tag" 2>$null) |
-        Where-Object { $_ -like "$($image.Name)@*" } | Select-Object -First 1
     Write-Host "  $($image.Name):$Tag"
-    if ($digest) { Write-Host "    $digest" -ForegroundColor DarkGray }
+    & docker buildx imagetools inspect "$($image.Name):$Tag" 2>$null |
+        Where-Object { $_ -match '^(Digest:|\s+Platform:)' } |
+        ForEach-Object { Write-Host "    $($_.Trim())" -ForegroundColor DarkGray }
 }
 Write-Host ''
 Write-Host 'No servidor, defina AWFACE_VERSION no .env e rode:'

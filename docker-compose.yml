@@ -21,12 +21,12 @@ services:
       retries: 10
 
   awface-api:
-    image: "novaintegral/awface-api:${AWFACE_VERSION:-1.1.0}"
+    image: "novaintegral/awface-api:${AWFACE_VERSION:-1.1.1}"
     build:
       context: .
       dockerfile: backend/AWFace.Api/Dockerfile
       args:
-        AWFACE_VERSION: "${AWFACE_VERSION:-1.1.0}"
+        AWFACE_VERSION: "${AWFACE_VERSION:-1.1.1}"
         AWFACE_BUILD_COMMIT: "${AWFACE_BUILD_COMMIT:-unknown}"
         AWFACE_BUILD_DATE: "${AWFACE_BUILD_DATE:-unknown}"
     container_name: awface-api
@@ -37,7 +37,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Production}"
       ASPNETCORE_URLS: "http://+:5500"
-      AWFACE_VERSION: "${AWFACE_VERSION:-1.1.0}"
+      AWFACE_VERSION: "${AWFACE_VERSION:-1.1.1}"
       AWFACE_BUILD_COMMIT: "${AWFACE_BUILD_COMMIT:-unknown}"
       AWFACE_BUILD_DATE: "${AWFACE_BUILD_DATE:-unknown}"
       TZ: "${TZ:-America/Sao_Paulo}"
@@ -76,12 +76,12 @@ services:
       - ./docker-data/awface-storage:/app/storage
 
   awface-front:
-    image: "novaintegral/awface-front:${AWFACE_VERSION:-1.1.0}"
+    image: "novaintegral/awface-front:${AWFACE_VERSION:-1.1.1}"
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        AWFACE_VERSION: "${AWFACE_VERSION:-1.1.0}"
+        AWFACE_VERSION: "${AWFACE_VERSION:-1.1.1}"
         AWFACE_BUILD_COMMIT: "${AWFACE_BUILD_COMMIT:-unknown}"
         AWFACE_BUILD_DATE: "${AWFACE_BUILD_DATE:-unknown}"
     container_name: awface-front

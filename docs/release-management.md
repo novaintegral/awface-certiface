@@ -86,10 +86,10 @@ O script:
 - recusa publicar com alterações não commitadas (`-AllowDirty` gera uma imagem de teste marcada `-dirty`);
 - valida a consistência de versões (`scripts/verify-version.mjs`);
 - recusa sobrescrever uma tag já existente no Docker Hub (`-Force` para forçar);
-- constrói as duas imagens para `linux/amd64` antes de qualquer push, com os labels OCI de versão, commit e data;
+- constrói as duas imagens para `linux/amd64` e `linux/arm64` (servidores Intel/AMD e ARM, como AWS Graviton) antes de qualquer push, com os labels OCI de versão, commit e data, usando o builder buildx `awface-builder` (criado automaticamente);
 - exibe os digests publicados e os comandos de atualização do servidor.
 
-Parâmetros adicionais: `-Namespace` (padrão `novaintegral`), `-Tag`, `-Platform`, `-NoCache`, `-SkipBuild`.
+Parâmetros adicionais: `-Namespace` (padrão `novaintegral`), `-Tag`, `-Platform` (ex.: `linux/amd64` para gerar só x64), `-NoCache`.
 
 O `.dockerignore` exclui `.env`, `deploy/env`, `docker-data` e o storage local de faces: segredos e dados biométricos nunca entram no contexto de build.
 

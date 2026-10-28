@@ -11,6 +11,21 @@ e o projeto utiliza [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 - Espaço reservado para mudanças da próxima release.
 
+## [1.1.1] - 2026-10-28
+
+### Corrigido
+
+- Imagens publicadas também para `linux/arm64`: a 1.1.0 foi gerada apenas para
+  `linux/amd64` e a API reiniciava com código 139 em servidores ARM (ex.: AWS Graviton).
+  Os Dockerfiles compilam na plataforma do builder e geram a imagem final por arquitetura.
+- `deploy/compose-awface.yml` não monta mais `./docker-data/front-html` sobre o
+  Nginx: o volume substituía o frontend da imagem e mantinha a versão anterior em produção.
+
+### Alterado
+
+- `scripts/publish.ps1` usa `docker buildx` (builder `awface-builder`) e publica
+  manifestos multiplataforma; removido o parâmetro `-SkipBuild`.
+
 ## [1.1.0] - 2026-10-27
 
 Release de segurança e confiabilidade (fases 0 e 1 do estudo de código de 27/10/2026).
@@ -97,6 +112,7 @@ Release de segurança e confiabilidade (fases 0 e 1 do estudo de código de 27/1
 - Deploy on-premise com frontend, API e PostgreSQL em Docker Compose.
 - Controle de release SemVer unificado entre frontend, backend e Docker.
 
-[Não publicado]: https://github.com/novaintegral/awface-certiface/compare/v1.1.0...HEAD
+[Não publicado]: https://github.com/novaintegral/awface-certiface/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/novaintegral/awface-certiface/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/novaintegral/awface-certiface/compare/v1.0.3...v1.1.0
 [1.0.0]: https://github.com/novaintegral/awface-certiface/releases/tag/v1.0.0

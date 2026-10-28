@@ -1,6 +1,7 @@
-FROM node:20-alpine AS build
+# Build na plataforma do builder: o resultado (HTML/JS) é independente de arquitetura.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 
-ARG AWFACE_VERSION=1.1.0
+ARG AWFACE_VERSION=1.1.1
 ARG AWFACE_BUILD_COMMIT=unknown
 ARG AWFACE_BUILD_DATE=unknown
 
@@ -15,7 +16,7 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 
-ARG AWFACE_VERSION=1.1.0
+ARG AWFACE_VERSION=1.1.1
 ARG AWFACE_BUILD_COMMIT=unknown
 ARG AWFACE_BUILD_DATE=unknown
 

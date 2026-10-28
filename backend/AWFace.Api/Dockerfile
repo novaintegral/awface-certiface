@@ -1,6 +1,8 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+# Build na plataforma do builder (sem emulação): a saída é IL portável (UseAppHost=false),
+# executada pela imagem aspnet da arquitetura de destino.
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 
-ARG AWFACE_VERSION=1.1.0
+ARG AWFACE_VERSION=1.1.1
 ARG AWFACE_BUILD_COMMIT=unknown
 
 WORKDIR /src
@@ -20,7 +22,7 @@ RUN test "$(cat VERSION)" = "$AWFACE_VERSION" && \
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0
 
-ARG AWFACE_VERSION=1.1.0
+ARG AWFACE_VERSION=1.1.1
 ARG AWFACE_BUILD_COMMIT=unknown
 ARG AWFACE_BUILD_DATE=unknown
 
